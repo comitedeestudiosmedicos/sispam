@@ -1,0 +1,4 @@
+tipo_documento,numero_documento,primer_nombre,segundo_nombre,primer_apellido,segundo_apellido,fecha_nacimiento,sexo,eps_nombre,numero_celular,direccion_residencia,ciudad_residencia
+CC,1020304050,Carlos,Alberto,Mendoza,Ríos,1988-05-14,Masculino,Sura EPS,+573001234567,Carrera 43A # 1-50,MEDELLIN-ANT-05001
+CC,9876543210,María,Fernanda,Gómez,Zapata,1992-11-20,Femenino,Nueva EPS,+573109876543,Calle 50 # 45-20,MEDELLIN-ANT-05001
+TI,1098765432,Juan,Diego,López,Pérez,2010-03-08,Masculino,Savia Salud EPS,+573155554433,Circular 4 # 73-12,MEDELLIN-ANT-05001

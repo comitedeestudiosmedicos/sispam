@@ -1,0 +1,21 @@
+# Configuración Apache para XAMPP y Hostinger VPS
+Options -Indexes
+DirectoryIndex index.php
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    # Redirección automática a HTTPS en servidores remotos (Hostinger)
+    # Requerido por los navegadores para habilitar la cámara web WebRTC
+    RewriteCond %{HTTPS} !=on
+    RewriteCond %{HTTP_HOST} !^localhost
+    RewriteCond %{HTTP_HOST} !^127\.0\.0\.1
+    RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+</IfModule>
+
+# Seguridad y tamaño máximo de archivos subidos
+php_value upload_max_filesize 25M
+php_value post_max_size 30M
+php_value max_execution_time 300
