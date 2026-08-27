@@ -1,10 +1,28 @@
 <?php
+
+//FORZAR MUESTRA DE ERRORES REALES (Temporal para diagnóstico)
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
 /**
  * Front Controller & Router Principal SISPAM
  */
 
+require_once __DIR__ . '/vendor/autoload.php';
+$dotenv = Dotenv\Dotenv::createImmutable(__DIR__);
+$dotenv->load();
+
 require_once __DIR__ . '/config/app.php';
 require_once __DIR__ . '/models/Ingreso.php';
+require_once __DIR__ . '/config/database.php';
+
+//PRUEBA DE CONEXION A LA BASE DE DATOS
+
+try {
+    $db = Database::getConnection();
+} catch (Exception $e) {
+    die("<h1 style='color:red;'>Error en la configuración local: " . $e->getMessage() . "</h1>");
+}
 
 $page = $_GET['page'] ?? 'dashboard';
 
@@ -109,4 +127,6 @@ switch ($page) {
     default:
         require_once __DIR__ . '/views/dashboard.php';
         break;
+
+        
 }
