@@ -1,0 +1,9 @@
+.env
+wp-config.php
+wp-content/uploads/
+node_modules/
+copias de seguridad
+contraseñas o credenciales de la base de datos
+.env
+/vendor/
+config/secrets.php

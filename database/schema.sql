@@ -1,4 +1,4 @@
--- Base de Datos para Sistema de Gestión Farmacéutica
+farmacia_db-- Base de Datos para Sistema de Gestión Farmacéutica
 -- Compatible con MySQL / MariaDB (XAMPP y Hostinger VPS)
 
 CREATE DATABASE IF NOT EXISTS `farmacia_db` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
