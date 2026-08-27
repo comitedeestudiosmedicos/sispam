@@ -4,7 +4,12 @@ check_role(['Administrador', 'empresa', 'usuarios']);
 
 require_once __DIR__ . '/../../models/Paciente.php';
 
+// NUEVO: Incluir el servicio de sincronización con Qrystalos
+require_once __DIR__ . '/../../services/QrystalosSyncService.php';
+
 $pacienteModel = new Paciente();
+$qrystalosService = new QrystalosSyncService(); // NUEVO: Inicializar el servicio
+
 $mensaje = '';
 $error = '';
 $resumenImportacion = null;
@@ -30,6 +35,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['archivo_csv'])) {
                 $inserted = 0;
                 $updated  = 0;
                 $skipped  = 0;
+
+                // NUEVO: Contadores para la API de Qrystalos
+                $qrystalos_ok = 0;
+                $qrystalos_error = 0;
+                $errores_qrystalos = [];
+
                 $rowNum   = 0;
 
                 // Leer encabezado
@@ -57,47 +68,67 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['archivo_csv'])) {
                         continue;
                     }
 
-                    $nombres_comp = trim($p_nombre . ' ' . $s_nombre);
-                    $apellidos_comp = trim($p_apellido . ' ' . $s_apellido);
-                    if (empty($apellidos_comp)) $apellidos_comp = 'REGISTRADO';
+                    // 1. Verificar si existe usando el método REAL de tu modelo
+                    $pacExistente = $pacienteModel->getByDocumento($tipo_doc, $num_doc);
+                    $idQrystalosExistente = $pacExistente ? ($pacExistente['qrystalos_consecutivo'] ?? null) : null;
 
-                    // Verificar si paciente existe por documento
-                    $pacExistente = $pacienteModel->buscarPorDocumento($num_doc);
-
+                    // 2. Preparar datos tal como los espera tu método createOrUpdate
                     $datosPaciente = [
                         'tipo_documento'     => $tipo_doc,
                         'numero_documento'   => $num_doc,
-                        'nombres'            => $nombres_comp,
-                        'apellidos'          => $apellidos_comp,
                         'primer_nombre'      => $p_nombre,
                         'segundo_nombre'     => $s_nombre,
                         'primer_apellido'    => $p_apellido,
                         'segundo_apellido'   => $s_apellido,
+                        'nombres'            => trim($p_nombre . ' ' . $s_nombre),
+                        'apellidos'          => trim($p_apellido . ' ' . $s_apellido),
                         'fecha_nacimiento'   => !empty($fecha_nac) ? date('Y-m-d', strtotime($fecha_nac)) : null,
-                        'sexo'               => in_array($sexo, ['Masculino','Femenino','Indeterminado o Intersexual']) ? $sexo : 'Masculino',
+                        'sexo'               => in_array($sexo, ['Masculino', 'Femenino', 'Indeterminado o Intersexual']) ? $sexo : 'Masculino',
                         'eps_nombre'         => $eps ?: 'Sura EPS',
                         'numero_celular'     => $celular,
-                        'direccion_residencia'=> $direccion,
+                        'direccion_residencia' => $direccion,
                         'ciudad_residencia'  => $ciudad_res,
                         'telefono'           => $celular
                     ];
 
+                    // 3. Guardar/Actualizar en BD Local usando tu método REAL
+                    $idLocal = $pacienteModel->createOrUpdate($datosPaciente);
+
                     if ($pacExistente) {
-                        $pacienteModel->actualizar($pacExistente['id'], $datosPaciente);
                         $updated++;
                     } else {
-                        $pacienteModel->crear($datosPaciente);
                         $inserted++;
+                    }
+
+                    // 4. SINCRONIZAR CON API QRYSTALOS
+                    $resultadoQrystalos = $qrystalosService->sincronizarPaciente($datosPaciente, $idQrystalosExistente);
+
+                    if ($resultadoQrystalos['success']) {
+                        $qrystalos_ok++;
+
+                        // Guardar el consecutivo de Qrystalos en la BD local
+                        if ($idLocal) {
+                            $pacienteModel->actualizarQrystalosId($tipo_doc, $num_doc, $resultadoQrystalos['consecutivo']);
+                        }
+                    } else {
+                        $qrystalos_error++;
+                        if (count($errores_qrystalos) < 5) {
+                            $errores_qrystalos[] = "Fila $rowNum (Doc: $num_doc): " . $resultadoQrystalos['error'];
+                        }
                     }
                 }
                 fclose($handle);
 
-                $mensaje = "Proceso de importación masiva finalizado exitosamente.";
+                $mensaje = "Proceso de importación masiva finalizado.";
                 $resumenImportacion = [
                     'insertados' => $inserted,
                     'actualizados' => $updated,
                     'omitidos' => $skipped,
-                    'total' => ($inserted + $updated + $skipped)
+                    'total' => ($inserted + $updated + $skipped),
+                    // NUEVO: Datos de sincronización
+                    'qrystalos_ok' => $qrystalos_ok,
+                    'qrystalos_error' => $qrystalos_error,
+                    'errores_detalle' => $errores_qrystalos
                 ];
             } else {
                 $error = "No se pudo leer el contenido del archivo CSV.";
@@ -116,7 +147,7 @@ require_once __DIR__ . '/../layouts/header.php';
 <div class="row mb-4">
     <div class="col-md-8">
         <h4 class="fw-bold text-primary mb-1"><i class="fa-solid fa-file-csv me-2"></i> Carga Masiva de Pacientes (CSV)</h4>
-        <p class="text-muted small">Importa o actualiza masivamente los registros de pacientes descargando la plantilla oficial de ejemplo.</p>
+        <p class="text-muted small">Importa o actualiza masivamente los registros. El sistema guardará localmente y sincronizará automáticamente con Qrystalos.</p>
     </div>
     <div class="col-md-4 text-md-end">
         <a href="index.php?page=importar_pacientes&download_template=1" class="btn btn-outline-success fw-bold shadow-sm">
@@ -163,6 +194,36 @@ require_once __DIR__ . '/../layouts/header.php';
                     </div>
                 </div>
             </div>
+
+            <!-- NUEVO: Resumen de Sincronización con Qrystalos -->
+            <hr class="my-4">
+            <h6 class="fw-bold text-secondary mb-3"><i class="fa-solid fa-cloud-arrow-up me-2"></i> Estado de Sincronización con Qrystalos (API)</h6>
+            <div class="row text-center">
+                <div class="col-md-6">
+                    <div class="p-3 bg-light rounded border border-success">
+                        <div class="fs-4 fw-bold text-success"><?= $resumenImportacion['qrystalos_ok'] ?></div>
+                        <small class="text-muted fw-bold">Sincronizados Correctamente</small>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="p-3 bg-light rounded border border-danger">
+                        <div class="fs-4 fw-bold text-danger"><?= $resumenImportacion['qrystalos_error'] ?></div>
+                        <small class="text-muted fw-bold">Errores de Sincronización</small>
+                    </div>
+                </div>
+            </div>
+
+            <?php if (!empty($resumenImportacion['errores_detalle'])): ?>
+                <div class="mt-3 text-start">
+                    <h6 class="text-danger fw-bold"><i class="fa-solid fa-triangle-exclamation"></i> Detalle de errores de Qrystalos (Primeros 5):</h6>
+                    <ul class="small text-danger mb-0">
+                        <?php foreach ($resumenImportacion['errores_detalle'] as $err): ?>
+                            <li><?= htmlspecialchars($err) ?></li>
+                        <?php endforeach; ?>
+                    </ul>
+                    <p class="small text-muted fst-italic mt-2">* Estos errores son esperados ahora mismo porque el CSV no tiene todos los campos obligatorios de la API. Se están enviando valores por defecto. Se corregirán al recibir los catálogos reales del onboarding.</p>
+                </div>
+            <?php endif; ?>
         </div>
     </div>
 <?php endif; ?>
@@ -203,6 +264,7 @@ require_once __DIR__ . '/../layouts/header.php';
                     <li>Columnas obligatorias: <code>tipo_documento</code>, <code>numero_documento</code>, <code>primer_nombre</code>.</li>
                     <li>Formatos aceptados de Fecha de Nacimiento: <code>YYYY-MM-DD</code> (ej: <code>1990-05-20</code>).</li>
                     <li>Si el paciente ya existe en el sistema por número de documento, sus datos serán actualizados automáticamente.</li>
+                    <li class="text-primary fw-bold">El sistema intentará sincronizar automáticamente con el ERP Qrystalos después de guardar localmente.</li>
                 </ol>
                 <a href="index.php?page=importar_pacientes&download_template=1" class="btn btn-sm btn-outline-success fw-bold">
                     <i class="fa-solid fa-download me-1"></i> Descargar plantilla_pacientes.csv

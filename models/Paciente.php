@@ -145,4 +145,28 @@ class Paciente {
             return $this->db->lastInsertId();
         }
     }
+
+        /**
+     * Actualiza únicamente el ID de Qrystalos después de una sincronización exitosa
+     */
+    public function actualizarQrystalosId($tipo_doc, $num_doc, $consecutivo) {
+        // Verificar si la columna existe, si no, crearla (siguiendo la lógica de tu modelo)
+        $stmtCols = $this->db->query("SHOW COLUMNS FROM pacientes LIKE 'qrystalos_consecutivo'");
+        if ($stmtCols->rowCount() == 0) {
+            try {
+                $this->db->exec("ALTER TABLE `pacientes` ADD COLUMN `qrystalos_consecutivo` VARCHAR(50) NULL");
+            } catch (Exception $e) {
+                // Silenciar si ya fue agregada por otro proceso
+            }
+        }
+
+        $sql = "UPDATE pacientes SET qrystalos_consecutivo = :consecutivo WHERE tipo_documento = :tipo_doc AND numero_documento = :num_doc";
+        $stmt = $this->db->prepare($sql);
+        return $stmt->execute([
+            'tipo_doc' => $tipo_doc,
+            'num_doc' => $num_doc,
+            'consecutivo' => $consecutivo
+        ]);
+    }
 }
+
