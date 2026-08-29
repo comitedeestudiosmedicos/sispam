@@ -14,6 +14,10 @@ if (!$ingreso) {
     die("Ingreso no encontrado.");
 }
 
+$nombre_sede = $ingreso['nombre_sede'] ?? ($ingreso['sede_nombre'] ?? 'Sede Principal');
+$dir_sede = !empty($ingreso['sede_direccion']) ? $ingreso['sede_direccion'] : ($config['direccion'] ?? '');
+$tel_sede = !empty($ingreso['sede_telefono']) ? $ingreso['sede_telefono'] : ($config['telefono'] ?? '');
+
 function limpiarAccentosTicket($string) {
     if (empty($string)) return '';
     return strtr($string, [
@@ -34,8 +38,9 @@ if (isset($_GET['rawbt']) && $_GET['rawbt'] == '1') {
     <center>
     <h3><?= htmlspecialchars(limpiarAccentosTicket($config['razon_social'])) ?></h3>
     NIT: <?= htmlspecialchars($config['nit']) ?><br>
-    <?= htmlspecialchars(limpiarAccentosTicket($config['direccion'])) ?><br>
-    Tel: <?= htmlspecialchars($config['telefono']) ?><br>
+    <b>SEDE: <?= htmlspecialchars(limpiarAccentosTicket($nombre_sede)) ?></b><br>
+    <?= htmlspecialchars(limpiarAccentosTicket($dir_sede)) ?><br>
+    Tel: <?= htmlspecialchars($tel_sede) ?><br>
     --------------------------------<br>
     <b>TIQUETE DE TURNO</b><br>
     <h2><?= htmlspecialchars($ingreso['ticket_numero']) ?></h2>
@@ -45,6 +50,7 @@ if (isset($_GET['rawbt']) && $_GET['rawbt'] == '1') {
     <b>Paciente:</b> <?= htmlspecialchars(limpiarAccentosTicket($ingreso['nombres'] . ' ' . $ingreso['apellidos'])) ?><br>
     <b>Documento:</b> <?= htmlspecialchars($ingreso['tipo_documento'] . ' ' . $ingreso['numero_documento']) ?><br>
     <b>EPS:</b> <?= htmlspecialchars(limpiarAccentosTicket($ingreso['eps_nombre'])) ?><br>
+    <b>Sede:</b> <?= htmlspecialchars(limpiarAccentosTicket($nombre_sede)) ?><br>
     <b>Orientador:</b> <?= htmlspecialchars(limpiarAccentosTicket($ingreso['orientador_nombre'])) ?><br>
     <?php if (!empty($ingreso['prioridad']) && $ingreso['prioridad'] !== 'NORMAL'): ?>
         <center>
@@ -169,8 +175,9 @@ $rawbt_direct_uri = "rawbt:" . $clean_host_url;
     <div class="header">
         <h3><?= htmlspecialchars($config['razon_social']) ?></h3>
         <div>NIT: <?= htmlspecialchars($config['nit']) ?></div>
-        <div><?= htmlspecialchars($config['direccion']) ?></div>
-        <div>Tel: <?= htmlspecialchars($config['telefono']) ?></div>
+        <div class="bold" style="font-size: 13px; margin: 3px 0;">SEDE: <?= htmlspecialchars($nombre_sede) ?></div>
+        <div><?= htmlspecialchars($dir_sede) ?></div>
+        <div>Tel: <?= htmlspecialchars($tel_sede) ?></div>
     </div>
 
     <div class="divider"></div>
@@ -184,6 +191,7 @@ $rawbt_direct_uri = "rawbt:" . $clean_host_url;
     <div class="info-row"><span class="bold">Paciente:</span> <?= htmlspecialchars($ingreso['nombres'] . ' ' . $ingreso['apellidos']) ?></div>
     <div class="info-row"><span class="bold">Documento:</span> <?= htmlspecialchars($ingreso['tipo_documento'] . ' ' . $ingreso['numero_documento']) ?></div>
     <div class="info-row"><span class="bold">EPS:</span> <?= htmlspecialchars($ingreso['eps_nombre']) ?></div>
+    <div class="info-row"><span class="bold">Sede:</span> <?= htmlspecialchars($nombre_sede) ?></div>
     <div class="info-row"><span class="bold">Orientador:</span> <?= htmlspecialchars($ingreso['orientador_nombre']) ?></div>
     
     <?php if (!empty($ingreso['prioridad']) && $ingreso['prioridad'] !== 'NORMAL'): ?>
@@ -209,8 +217,9 @@ function imprimirRawBTTablet() {
         "--------------------------------\n" +
         "   <?= addslashes(htmlspecialchars(limpiarAccentosTicket($config['razon_social']))) ?>\n" +
         "   NIT: <?= addslashes(htmlspecialchars($config['nit'])) ?>\n" +
-        "   <?= addslashes(htmlspecialchars(limpiarAccentosTicket($config['direccion']))) ?>\n" +
-        "   Tel: <?= addslashes(htmlspecialchars($config['telefono'])) ?>\n" +
+        "   SEDE: <?= addslashes(htmlspecialchars(limpiarAccentosTicket($nombre_sede))) ?>\n" +
+        "   <?= addslashes(htmlspecialchars(limpiarAccentosTicket($dir_sede))) ?>\n" +
+        "   Tel: <?= addslashes(htmlspecialchars($tel_sede)) ?>\n" +
         "--------------------------------\n" +
         "       TIQUETE DE TURNO\n" +
         "         <?= addslashes(htmlspecialchars($ingreso['ticket_numero'])) ?>\n" +
@@ -219,6 +228,7 @@ function imprimirRawBTTablet() {
         "Paciente: <?= addslashes(htmlspecialchars(limpiarAccentosTicket($ingreso['nombres'] . ' ' . $ingreso['apellidos']))) ?>\n" +
         "Documento: <?= addslashes(htmlspecialchars($ingreso['tipo_documento'] . ' ' . $ingreso['numero_documento'])) ?>\n" +
         "EPS: <?= addslashes(htmlspecialchars(limpiarAccentosTicket($ingreso['eps_nombre']))) ?>\n" +
+        "Sede: <?= addslashes(htmlspecialchars(limpiarAccentosTicket($nombre_sede))) ?>\n" +
         "Orientador: <?= addslashes(htmlspecialchars(limpiarAccentosTicket($ingreso['orientador_nombre']))) ?>\n" +
         "--------------------------------\n" +
         "<?= addslashes(htmlspecialchars(limpiarAccentosTicket($config['pie_tiquete']))) ?>\n" +

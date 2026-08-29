@@ -4,13 +4,17 @@ require_once __DIR__ . '/../../models/Empresa.php';
 
 $empresaModel = new Empresa();
 $config = $empresaModel->getConfig();
+
+$active_sede_id = intval($_GET['sede_id'] ?? ($_SESSION['active_sede_id'] ?? ($_SESSION['sede_id'] ?? 0)));
+$sedeInfo = $active_sede_id ? $empresaModel->getSedeById($active_sede_id) : null;
+$nombre_sede_mostrar = $sedeInfo ? $sedeInfo['nombre_sede'] : ($_SESSION['active_sede_nombre'] ?? 'Todas las Sedes');
 ?>
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Turnero 1 - En Proceso - <?= htmlspecialchars($config['razon_social']) ?></title>
+    <title>Turnero 1 - En Proceso - <?= htmlspecialchars($config['razon_social']) ?> (<?= htmlspecialchars($nombre_sede_mostrar) ?>)</title>
     <!-- Favicon SISPAM -->
     <link rel="icon" type="image/jpeg" href="assets/img/logo_sispam.jpg">
     <link rel="shortcut icon" type="image/jpeg" href="assets/img/logo_sispam.jpg">
@@ -22,7 +26,7 @@ $config = $empresaModel->getConfig();
 <body class="turnero-bg">
 
 <!-- Encabezado Turnero TV -->
-<div class="container-fluid py-3 px-4 bg-dark bg-opacity-50 border-bottom border-secondary d-flex justify-content-between align-items-center">
+<div class="container-fluid py-3 px-4 bg-dark bg-opacity-50 border-bottom border-secondary d-flex justify-content-between align-items-center flex-wrap gap-2">
     <div class="d-flex align-items-center gap-3">
         <?php if (!empty($config['logo_url']) && file_exists(BASE_DIR . '/' . $config['logo_url'])): ?>
             <img src="<?= $config['logo_url'] ?>" alt="Logo" style="max-height: 60px;">
@@ -31,7 +35,12 @@ $config = $empresaModel->getConfig();
         <?php endif; ?>
         <div>
             <h2 class="fw-bold mb-0 text-white"><?= htmlspecialchars($config['razon_social']) ?></h2>
-            <div class="text-info fw-semibold fs-5"><i class="fa-solid fa-hourglass-half me-2"></i> SALA DE ESPERA - PACIENTES EN PROCESO</div>
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+                <span class="badge bg-warning text-dark fs-6 py-1 px-3 fw-bold rounded-pill shadow-sm">
+                    <i class="fa-solid fa-location-dot me-1"></i> SEDE: <?= htmlspecialchars($nombre_sede_mostrar) ?>
+                </span>
+                <span class="text-info fw-semibold fs-5"><i class="fa-solid fa-hourglass-half me-1"></i> SALA DE ESPERA - PACIENTES EN PROCESO</span>
+            </div>
         </div>
     </div>
     <div class="text-end text-white">
@@ -101,8 +110,10 @@ function actualizarReloj() {
     document.getElementById('fecha-digital').innerText = now.toLocaleDateString('es-CO', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 }
 
+const activeSedeId = '<?= $active_sede_id ?>';
+
 function actualizarTurnero1() {
-    fetch('api/turnero_data.php?type=1')
+    fetch('api/turnero_data.php?type=1&sede_id=' + encodeURIComponent(activeSedeId))
         .then(res => res.json())
         .then(data => {
             const tbody = document.getElementById('tabla-turnero1');

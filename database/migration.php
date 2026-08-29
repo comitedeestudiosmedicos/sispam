@@ -79,14 +79,20 @@ function ejecutarMigracionBD($conn) {
             }
         }
 
-        // Columna hora_apertura_atencion en empresa_config
+        // Columna hora_apertura_atencion y hora_apertura_festivos en empresa_config
         try {
-            $conn->exec("ALTER TABLE `empresa_config` ADD COLUMN `hora_apertura_atencion` TIME DEFAULT '07:20:00'");
+            $conn->exec("ALTER TABLE `empresa_config` ADD COLUMN `hora_apertura_atencion` TIME DEFAULT '07:00:00'");
+        } catch (Exception $e) {}
+        try {
+            $conn->exec("ALTER TABLE `empresa_config` ADD COLUMN `hora_apertura_festivos` TIME DEFAULT '08:00:00'");
         } catch (Exception $e) {}
 
-        // Columna hora_apertura_atencion en sedes (si ya existe la tabla)
+        // Columnas de horario en sedes (si ya existe la tabla)
         try {
-            $conn->exec("ALTER TABLE `sedes` ADD COLUMN `hora_apertura_atencion` TIME DEFAULT '07:20:00'");
+            $conn->exec("ALTER TABLE `sedes` ADD COLUMN `hora_apertura_atencion` TIME DEFAULT '07:00:00'");
+        } catch (Exception $e) {}
+        try {
+            $conn->exec("ALTER TABLE `sedes` ADD COLUMN `hora_apertura_festivos` TIME DEFAULT '08:00:00'");
         } catch (Exception $e) {}
 
         // 3. Columnas en la tabla 'usuarios'
@@ -181,7 +187,8 @@ function ejecutarMigracionBD($conn) {
                 'verificado_por_user_id'  => "INT NULL",
                 'fecha_verificacion'       => "DATETIME NULL",
                 'observacion_verificacion' => "TEXT NULL",
-                'pdf_formula_final_url'    => "VARCHAR(255) NULL"
+                'pdf_formula_final_url'    => "VARCHAR(255) NULL",
+                'contiene_mipres'          => "ENUM('SI','NO') NULL"
             ];
 
             $stmtI = $conn->query("SHOW COLUMNS FROM `ingresos`");
@@ -192,6 +199,11 @@ function ejecutarMigracionBD($conn) {
                     try { $conn->exec("ALTER TABLE `ingresos` ADD COLUMN `{$colName}` {$colDef}"); } catch (Exception $e) {}
                 }
             }
+
+            // Asegurar que estado_tramite sea VARCHAR(50) para admitir nuevos estados de flujo (ESPERA_ENTREGA, EN_ENTREGA)
+            try {
+                $conn->exec("ALTER TABLE `ingresos` MODIFY COLUMN `estado_tramite` VARCHAR(50) NOT NULL DEFAULT 'INGRESADO'");
+            } catch (Exception $e) {}
         } catch (Exception $e) {}
 
         // 6. Sembrar Roles y Permisos para Monitor y Supervisor de Alistamiento
@@ -208,6 +220,18 @@ function ejecutarMigracionBD($conn) {
                     $conn->prepare("INSERT INTO `roles` (`nombre`, `permisos`) VALUES (?, ?)")->execute($r);
                 }
             }
+        } catch (Exception $e) {}
+
+        // 7. Soporte Multi-Sede en 'modulos_entrega'
+        try {
+            $stmtColsM = $conn->query("SHOW COLUMNS FROM `modulos_entrega`");
+            $colsExistentesM = $stmtColsM ? $stmtColsM->fetchAll(PDO::FETCH_COLUMN) : [];
+            if (!in_array('sede_id', $colsExistentesM)) {
+                try { $conn->exec("ALTER TABLE `modulos_entrega` ADD COLUMN `sede_id` INT NOT NULL DEFAULT 1 AFTER `id`"); } catch (Exception $e) {}
+            }
+            // Eliminar índice único antiguo sobre nombre y crear índice compuesto (sede_id, nombre)
+            try { $conn->exec("ALTER TABLE `modulos_entrega` DROP INDEX `nombre`"); } catch (Exception $e) {}
+            try { $conn->exec("ALTER TABLE `modulos_entrega` ADD UNIQUE KEY `idx_sede_modulo_nombre` (`sede_id`, `nombre`)"); } catch (Exception $e) {}
         } catch (Exception $e) {}
 
     } catch (Exception $e) {

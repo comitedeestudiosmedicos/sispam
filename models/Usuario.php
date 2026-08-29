@@ -134,48 +134,162 @@ class Usuario {
         return $stmt->fetchAll();
     }
 
-    public function create($rol_id, $nombre_completo, $usuario, $password, $empresa_id = 1, $sede_id = 1) {
-        $hash = password_hash($password, PASSWORD_BCRYPT);
-        $stmt = $this->db->prepare("
-            INSERT INTO usuarios (rol_id, empresa_id, sede_id, nombre_completo, usuario, password_hash, estado) 
-            VALUES (:rol_id, :empresa_id, :sede_id, :nombre_completo, :usuario, :password_hash, 'ACTIVO')
-        ");
-        return $stmt->execute([
-            ':rol_id' => $rol_id,
-            ':empresa_id' => $empresa_id,
-            ':sede_id' => $sede_id,
-            ':nombre_completo' => $nombre_completo,
-            ':usuario' => $usuario,
-            ':password_hash' => $hash
-        ]);
+    public function usuarioExiste($usuario, $excludeId = null) {
+        $sql = "SELECT COUNT(*) FROM usuarios WHERE LOWER(TRIM(usuario)) = LOWER(TRIM(:u))";
+        $params = [':u' => trim($usuario)];
+        if (!empty($excludeId)) {
+            $sql .= " AND id != :id";
+            $params[':id'] = intval($excludeId);
+        }
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
+        return $stmt->fetchColumn() > 0;
     }
 
-    public function update($id, $rol_id, $nombre_completo, $usuario, $estado, $new_password = null, $empresa_id = 1, $sede_id = 1) {
-        $params = [
-            ':rol_id' => $rol_id,
-            ':empresa_id' => $empresa_id,
-            ':sede_id' => $sede_id,
-            ':nombre_completo' => $nombre_completo,
-            ':usuario' => $usuario,
-            ':estado' => $estado,
-            ':id' => $id
-        ];
-
-        $sql = "UPDATE usuarios SET rol_id = :rol_id, empresa_id = :empresa_id, sede_id = :sede_id, nombre_completo = :nombre_completo, usuario = :usuario, estado = :estado";
-
-        if (!empty($new_password)) {
-            $sql .= ", password_hash = :hash";
-            $params[':hash'] = password_hash($new_password, PASSWORD_BCRYPT);
+    public function create($rol_id, $nombre_completo, $usuario, $password, $empresa_id = 1, $sede_id = 1, $sedes_adicionales = []) {
+        $userTrimmed = trim($usuario);
+        if ($this->usuarioExiste($userTrimmed)) {
+            return false;
         }
 
-        $sql .= " WHERE id = :id";
-        $stmt = $this->db->prepare($sql);
-        return $stmt->execute($params);
+        try {
+            $hash = password_hash($password, PASSWORD_BCRYPT);
+            $stmt = $this->db->prepare("
+                INSERT INTO usuarios (rol_id, empresa_id, sede_id, nombre_completo, usuario, password_hash, estado) 
+                VALUES (:rol_id, :empresa_id, :sede_id, :nombre_completo, :usuario, :password_hash, 'ACTIVO')
+            ");
+            $res = $stmt->execute([
+                ':rol_id' => $rol_id,
+                ':empresa_id' => $empresa_id,
+                ':sede_id' => $sede_id,
+                ':nombre_completo' => $nombre_completo,
+                ':usuario' => $userTrimmed,
+                ':password_hash' => $hash
+            ]);
+
+            if ($res) {
+                $newUserId = $this->db->lastInsertId();
+                $allSedes = array_unique(array_filter(array_merge([$sede_id], $sedes_adicionales)));
+                $this->asignarSedesUsuario($newUserId, $allSedes);
+                return true;
+            }
+            return false;
+        } catch (PDOException $e) {
+            return false;
+        }
+    }
+
+    public function update($id, $rol_id, $nombre_completo, $usuario, $estado, $new_password = null, $empresa_id = 1, $sede_id = 1, $sedes_adicionales = []) {
+        $userTrimmed = trim($usuario);
+        if ($this->usuarioExiste($userTrimmed, $id)) {
+            return false;
+        }
+
+        try {
+            $params = [
+                ':rol_id' => $rol_id,
+                ':empresa_id' => $empresa_id,
+                ':sede_id' => $sede_id,
+                ':nombre_completo' => $nombre_completo,
+                ':usuario' => $userTrimmed,
+                ':estado' => $estado,
+                ':id' => $id
+            ];
+
+            $sql = "UPDATE usuarios SET rol_id = :rol_id, empresa_id = :empresa_id, sede_id = :sede_id, nombre_completo = :nombre_completo, usuario = :usuario, estado = :estado";
+
+            if (!empty($new_password)) {
+                $sql .= ", password_hash = :hash";
+                $params[':hash'] = password_hash($new_password, PASSWORD_BCRYPT);
+            }
+
+            $sql .= " WHERE id = :id";
+            $stmt = $this->db->prepare($sql);
+            $res = $stmt->execute($params);
+
+            if ($res) {
+                $allSedes = array_unique(array_filter(array_merge([$sede_id], $sedes_adicionales)));
+                $this->asignarSedesUsuario($id, $allSedes);
+                return true;
+            }
+            return false;
+        } catch (PDOException $e) {
+            return false;
+        }
     }
 
     public function updateEstado($id, $estado) {
-        $stmt = $this->db->prepare("UPDATE usuarios SET estado = :estado WHERE id = :id");
-        return $stmt->execute([':estado' => $estado, ':id' => $id]);
+        try {
+            $stmt = $this->db->prepare("UPDATE usuarios SET estado = :estado WHERE id = :id");
+            return $stmt->execute([':estado' => $estado, ':id' => $id]);
+        } catch (PDOException $e) {
+            return false;
+        }
+    }
+
+    // --- GESTIÓN DE MÚLTIPLES SEDES POR USUARIO ---
+
+    public function asegurarTablaUsuarioSedes() {
+        try {
+            $this->db->exec("
+                CREATE TABLE IF NOT EXISTS usuario_sedes (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    usuario_id INT NOT NULL,
+                    sede_id INT NOT NULL,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE KEY uq_user_sede (usuario_id, sede_id)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+            ");
+        } catch (PDOException $e) {}
+    }
+
+    public function getSedesUsuario($usuario_id) {
+        $this->asegurarTablaUsuarioSedes();
+        $stmt = $this->db->prepare("
+            SELECT s.*, e.razon_social AS empresa_nombre 
+            FROM sedes s
+            JOIN usuario_sedes us ON s.id = us.sede_id
+            LEFT JOIN empresas e ON s.empresa_id = e.id
+            WHERE us.usuario_id = :uid AND s.estado = 'Activo'
+            ORDER BY s.nombre_sede ASC
+        ");
+        $stmt->execute([':uid' => $usuario_id]);
+        $sedes = $stmt->fetchAll();
+
+        // Si no tiene registros en la tabla pivote, retornar la sede asignada en usuarios
+        if (empty($sedes)) {
+            $stmtU = $this->db->prepare("
+                SELECT s.*, e.razon_social AS empresa_nombre 
+                FROM sedes s 
+                JOIN usuarios u ON u.sede_id = s.id 
+                LEFT JOIN empresas e ON s.empresa_id = e.id
+                WHERE u.id = :uid AND s.estado = 'Activo'
+            ");
+            $stmtU->execute([':uid' => $usuario_id]);
+            $sedes = $stmtU->fetchAll();
+        }
+        return $sedes;
+    }
+
+    public function getSedesIdsUsuario($usuario_id) {
+        $sedes = $this->getSedesUsuario($usuario_id);
+        return array_map(function($s) { return intval($s['id']); }, $sedes);
+    }
+
+    public function asignarSedesUsuario($usuario_id, array $sede_ids) {
+        $this->asegurarTablaUsuarioSedes();
+        $del = $this->db->prepare("DELETE FROM usuario_sedes WHERE usuario_id = :uid");
+        $del->execute([':uid' => $usuario_id]);
+
+        if (!empty($sede_ids)) {
+            $ins = $this->db->prepare("INSERT IGNORE INTO usuario_sedes (usuario_id, sede_id) VALUES (:uid, :sid)");
+            foreach ($sede_ids as $sid) {
+                if ($sid > 0) {
+                    $ins->execute([':uid' => $usuario_id, ':sid' => intval($sid)]);
+                }
+            }
+        }
+        return true;
     }
 
     // --- GESTIÓN DINÁMICA DE PERMISOS DE MÓDULOS ---
@@ -196,7 +310,7 @@ class Usuario {
         if (!in_array('dashboard', $permisos)) {
             $permisos[] = 'dashboard';
         }
-        $json = json_encode(array_values($permisos));
+        $json = json_encode(array_values(array_unique($permisos)));
         $stmt = $this->db->prepare("UPDATE roles SET permisos = :permisos WHERE id = :id");
         return $stmt->execute([':permisos' => $json, ':id' => $rol_id]);
     }

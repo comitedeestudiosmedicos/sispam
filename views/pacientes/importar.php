@@ -1,20 +1,48 @@
 <?php
 require_once __DIR__ . '/../../config/app.php';
-check_role(['Administrador', 'empresa', 'usuarios']);
+check_role(['Administrador', 'empresa', 'usuarios', 'orientador']);
 
 require_once __DIR__ . '/../../models/Paciente.php';
-
-// NUEVO: Incluir el servicio de sincronización con Qrystalos
 require_once __DIR__ . '/../../services/QrystalosSyncService.php';
 
 $pacienteModel = new Paciente();
-$qrystalosService = new QrystalosSyncService(); // NUEVO: Inicializar el servicio
+$qrystalosService = new QrystalosSyncService();
 
 $mensaje = '';
 $error = '';
 $resumenImportacion = null;
 
-// Descarga directa de la plantilla CSV
+// =============================================================================
+// 1. EXPORTAR PACIENTES EXISTENTES A CSV (Respaldo manual para el Orientador)
+// =============================================================================
+if (isset($_GET['exportar']) && $_GET['exportar'] == '1') {
+    try {
+        $db = Database::getConnection();
+        $stmt = $db->query("SELECT tipo_documento, numero_documento, primer_nombre, segundo_nombre, primer_apellido, segundo_apellido, fecha_nacimiento, sexo, eps_nombre, numero_celular, direccion_residencia, ciudad_residencia FROM pacientes ORDER BY id DESC LIMIT 1000");
+        $pacientes = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="respaldo_pacientes_sispam_' . date('Y-m-d_His') . '.csv"');
+        
+        $output = fopen('php://output', 'w');
+        // BOM UTF-8 para que Excel abra correctamente los acentos y ñ
+        fprintf($output, chr(0xEF).chr(0xBB).chr(0xBF));
+        
+        fputcsv($output, ['tipo_documento', 'numero_documento', 'primer_nombre', 'segundo_nombre', 'primer_apellido', 'segundo_apellido', 'fecha_nacimiento', 'sexo', 'eps_nombre', 'numero_celular', 'direccion_residencia', 'ciudad_residencia']);
+        
+        foreach ($pacientes as $row) {
+            fputcsv($output, $row);
+        }
+        fclose($output);
+        exit;
+    } catch (Exception $e) {
+        die("Error al generar el CSV: " . $e->getMessage());
+    }
+}
+
+// =============================================================================
+// 2. DESCARGAR PLANTILLA CSV VACÍA
+// =============================================================================
 if (isset($_GET['download_template']) && $_GET['download_template'] == '1') {
     $file_path = BASE_DIR . '/assets/plantilla_pacientes.csv';
     if (file_exists($file_path)) {
@@ -25,6 +53,9 @@ if (isset($_GET['download_template']) && $_GET['download_template'] == '1') {
     }
 }
 
+// =============================================================================
+// 3. PROCESAR CARGA MASIVA DE CSV
+// =============================================================================
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['archivo_csv'])) {
     $file = $_FILES['archivo_csv'];
     if ($file['error'] === UPLOAD_ERR_OK && is_uploaded_file($file['tmp_name'])) {
@@ -35,13 +66,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['archivo_csv'])) {
                 $inserted = 0;
                 $updated  = 0;
                 $skipped  = 0;
-
-                // NUEVO: Contadores para la API de Qrystalos
+                
+                // Contadores para la sincronización con Qrystalos
                 $qrystalos_ok = 0;
                 $qrystalos_error = 0;
                 $errores_qrystalos = [];
-
-                $rowNum   = 0;
+                
+                $rowNum = 0;
 
                 // Leer encabezado
                 $header = fgetcsv($handle, 2000, ',');
@@ -68,11 +99,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['archivo_csv'])) {
                         continue;
                     }
 
-                    // 1. Verificar si existe usando el método REAL de tu modelo
+                    // Verificar si existe usando el método REAL del modelo
                     $pacExistente = $pacienteModel->getByDocumento($tipo_doc, $num_doc);
                     $idQrystalosExistente = $pacExistente ? ($pacExistente['qrystalos_consecutivo'] ?? null) : null;
 
-                    // 2. Preparar datos tal como los espera tu método createOrUpdate
+                    // Preparar datos tal como los espera el método createOrUpdate
                     $datosPaciente = [
                         'tipo_documento'     => $tipo_doc,
                         'numero_documento'   => $num_doc,
@@ -83,15 +114,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['archivo_csv'])) {
                         'nombres'            => trim($p_nombre . ' ' . $s_nombre),
                         'apellidos'          => trim($p_apellido . ' ' . $s_apellido),
                         'fecha_nacimiento'   => !empty($fecha_nac) ? date('Y-m-d', strtotime($fecha_nac)) : null,
-                        'sexo'               => in_array($sexo, ['Masculino', 'Femenino', 'Indeterminado o Intersexual']) ? $sexo : 'Masculino',
+                        'sexo'               => in_array($sexo, ['Masculino','Femenino','Indeterminado o Intersexual']) ? $sexo : 'Masculino',
                         'eps_nombre'         => $eps ?: 'Sura EPS',
                         'numero_celular'     => $celular,
-                        'direccion_residencia' => $direccion,
+                        'direccion_residencia'=> $direccion,
                         'ciudad_residencia'  => $ciudad_res,
                         'telefono'           => $celular
                     ];
 
-                    // 3. Guardar/Actualizar en BD Local usando tu método REAL
+                    // PASO A: Guardar/Actualizar en BD Local (SIEMPRE, sin importar Qrystalos)
                     $idLocal = $pacienteModel->createOrUpdate($datosPaciente);
 
                     if ($pacExistente) {
@@ -100,13 +131,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['archivo_csv'])) {
                         $inserted++;
                     }
 
-                    // 4. SINCRONIZAR CON API QRYSTALOS
+                    // PASO B: Sincronizar con API Qrystalos
                     $resultadoQrystalos = $qrystalosService->sincronizarPaciente($datosPaciente, $idQrystalosExistente);
 
                     if ($resultadoQrystalos['success']) {
                         $qrystalos_ok++;
-
-                        // Guardar el consecutivo de Qrystalos en la BD local
+                        // Guardar el consecutivo de Qrystalos en la BD local para futuras actualizaciones
                         if ($idLocal) {
                             $pacienteModel->actualizarQrystalosId($tipo_doc, $num_doc, $resultadoQrystalos['consecutivo']);
                         }
@@ -125,7 +155,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['archivo_csv'])) {
                     'actualizados' => $updated,
                     'omitidos' => $skipped,
                     'total' => ($inserted + $updated + $skipped),
-                    // NUEVO: Datos de sincronización
                     'qrystalos_ok' => $qrystalos_ok,
                     'qrystalos_error' => $qrystalos_error,
                     'errores_detalle' => $errores_qrystalos
@@ -150,6 +179,11 @@ require_once __DIR__ . '/../layouts/header.php';
         <p class="text-muted small">Importa o actualiza masivamente los registros. El sistema guardará localmente y sincronizará automáticamente con Qrystalos.</p>
     </div>
     <div class="col-md-4 text-md-end">
+        <!-- Botón NUEVO: Exportar respaldo -->
+        <a href="index.php?page=importar_pacientes&exportar=1" class="btn btn-outline-primary fw-bold shadow-sm me-2">
+            <i class="fa-solid fa-file-export me-1"></i> 💾 Exportar Pacientes (CSV)
+        </a>
+        <!-- Botón ORIGINAL: Descargar plantilla -->
         <a href="index.php?page=importar_pacientes&download_template=1" class="btn btn-outline-success fw-bold shadow-sm">
             <i class="fa-solid fa-download me-1"></i> 📄 Descargar Plantilla CSV
         </a>
@@ -157,11 +191,17 @@ require_once __DIR__ . '/../layouts/header.php';
 </div>
 
 <?php if ($mensaje): ?>
-    <div class="alert alert-success alert-dismissible fade show small"><i class="fa-solid fa-circle-check me-1"></i> <?= htmlspecialchars($mensaje) ?><button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
+    <div class="alert alert-success alert-dismissible fade show small">
+        <i class="fa-solid fa-circle-check me-1"></i> <?= htmlspecialchars($mensaje) ?>
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
 <?php endif; ?>
 
 <?php if ($error): ?>
-    <div class="alert alert-danger alert-dismissible fade show small"><i class="fa-solid fa-triangle-exclamation me-1"></i> <?= htmlspecialchars($error) ?><button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
+    <div class="alert alert-danger alert-dismissible fade show small">
+        <i class="fa-solid fa-triangle-exclamation me-1"></i> <?= htmlspecialchars($error) ?>
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
 <?php endif; ?>
 
 <?php if ($resumenImportacion): ?>
@@ -194,8 +234,8 @@ require_once __DIR__ . '/../layouts/header.php';
                     </div>
                 </div>
             </div>
-
-            <!-- NUEVO: Resumen de Sincronización con Qrystalos -->
+            
+            <!-- SECCIÓN NUEVA: Resumen de Sincronización con Qrystalos -->
             <hr class="my-4">
             <h6 class="fw-bold text-secondary mb-3"><i class="fa-solid fa-cloud-arrow-up me-2"></i> Estado de Sincronización con Qrystalos (API)</h6>
             <div class="row text-center">
@@ -221,7 +261,10 @@ require_once __DIR__ . '/../layouts/header.php';
                             <li><?= htmlspecialchars($err) ?></li>
                         <?php endforeach; ?>
                     </ul>
-                    <p class="small text-muted fst-italic mt-2">* Estos errores son esperados ahora mismo porque el CSV no tiene todos los campos obligatorios de la API. Se están enviando valores por defecto. Se corregirán al recibir los catálogos reales del onboarding.</p>
+                    <p class="small text-muted fst-italic mt-2">
+                        * Estos errores son esperados ahora mismo porque el CSV no tiene todos los campos obligatorios de la API. 
+                        Se están enviando valores por defecto. Se corregirán al recibir los catálogos reales del onboarding.
+                    </p>
                 </div>
             <?php endif; ?>
         </div>

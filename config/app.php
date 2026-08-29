@@ -296,11 +296,11 @@ function registrar_log_auditoria($modulo, $accion, $registro_id = null, $detalle
 function has_permission($module_key) {
     if (!isset($_SESSION['user_id'])) return false;
     $role = $_SESSION['rol_nombre'] ?? '';
-    if ($role === 'Administrador' || $role === 'Regente') return true;
-    if ($module_key === 'auditoria') {
-        return true; // Permitir visualización del log de auditoría a todos los usuarios autenticados
-    }
+    if ($role === 'Administrador') return true;
+    
     $permisos = $_SESSION['permisos'] ?? [];
+    if (!is_array($permisos)) return false;
+
     return in_array($module_key, $permisos);
 }
 
@@ -308,21 +308,23 @@ function has_permission($module_key) {
 function check_role($module_key_or_roles = []) {
     check_auth();
     $user_role = $_SESSION['rol_nombre'] ?? '';
-    if ($user_role === 'Administrador' || $user_role === 'Regente') return;
+    if ($user_role === 'Administrador') return;
 
     if (!is_array($module_key_or_roles)) {
         $module_key_or_roles = [$module_key_or_roles];
     }
 
-    $user_role = $_SESSION['rol_nombre'] ?? '';
     $user_permisos = $_SESSION['permisos'] ?? [];
+    if (!is_array($user_permisos)) {
+        $user_permisos = [];
+    }
 
     // 1. Verificación directa de nombre de rol
     if (in_array($user_role, $module_key_or_roles)) {
         return;
     }
 
-    // 2. Verificación por permisos de módulo o alias de rol
+    // 2. Verificación por permisos de módulo asignados en la matriz
     foreach ($module_key_or_roles as $item) {
         $item_lower = strtolower($item);
         
@@ -331,43 +333,21 @@ function check_role($module_key_or_roles = []) {
             return;
         }
 
-        if (($item_lower === 'monitoreo' || $item_lower === 'monitor') && 
-            (in_array('monitoreo', $user_permisos) || strcasecmp($user_role, 'Monitor') === 0 || strcasecmp($user_role, 'Farmacéutico') === 0)) {
+        // Aliases específicos para compatibilidad de permisos
+        if ($item_lower === 'supervision_alistamiento' && (in_array('supervision_alistamiento', $user_permisos) || in_array('alistamiento', $user_permisos))) {
             return;
         }
-
-        if (($item_lower === 'supervision_alistamiento' || $item_lower === 'supervisor_alistamiento' || $item_lower === 'supervisor') && 
-            (in_array('supervision_alistamiento', $user_permisos) || strcasecmp($user_role, 'Supervisor de Alistamiento') === 0)) {
-            return;
-        }
-
-        if (($item_lower === 'transcriptor' || $item_lower === 'transcripcion') && 
-            (in_array('transcripcion', $user_permisos) || strcasecmp($user_role, 'Transcripcion') === 0 || strcasecmp($user_role, 'Transcriptor') === 0)) {
-            return;
-        }
-
-        if (($item_lower === 'orientador' || $item_lower === 'ingreso') && 
-            (in_array('ingreso', $user_permisos) || strcasecmp($user_role, 'Orientador') === 0)) {
-            return;
-        }
-
-        if (($item_lower === 'alistamiento' || $item_lower === 'alistador') && 
-            (in_array('alistamiento', $user_permisos) || in_array('supervision_alistamiento', $user_permisos) || strcasecmp($user_role, 'Alistamiento') === 0 || strcasecmp($user_role, 'Alistador') === 0 || strcasecmp($user_role, 'Supervisor de Alistamiento') === 0)) {
-            return;
-        }
-
-        if (($item_lower === 'entrega' || $item_lower === 'entregador') && 
-            (in_array('entrega', $user_permisos) || strcasecmp($user_role, 'Entrega') === 0 || strcasecmp($user_role, 'Entregador') === 0)) {
-            return;
-        }
-
-        if (($item_lower === 'regente' || $item_lower === 'reportes') && 
-            (in_array('reportes', $user_permisos) || strcasecmp($user_role, 'Regente') === 0)) {
+        if ($item_lower === 'alistamiento' && (in_array('alistamiento', $user_permisos) || in_array('supervision_alistamiento', $user_permisos))) {
             return;
         }
     }
 
-    header('Location: ' . BASE_URL . 'index.php?page=dashboard&error=acceso_denegado');
+    // 3. Acceso denegado: Registrar traza y redirigir
+    $usr = $_SESSION['usuario'] ?? 'Desconocido';
+    registrar_log_auditoria('SEGURIDAD', 'ACCESO_DENEGADO', null, "Acceso denegado a usuario: {$usr} (Rol: {$user_role}) al módulo: " . implode(', ', $module_key_or_roles));
+    
+    $_SESSION['error_acceso'] = 'No cuenta con los permisos necesarios para acceder a este módulo. Comuníquese con el Administrador del sistema.';
+    header('Location: index.php?page=dashboard');
     exit;
 }
 
@@ -419,4 +399,86 @@ function get_prioridad_badge($prioridad) {
         default:
             return '';
     }
+}
+
+/**
+ * Cálculo Oficial de Festivos en Colombia (Ley 51 de 1983 / Ley Emiliani y Calendario Católico)
+ */
+function get_festivos_colombia($year) {
+    $pascua = easter_date($year);
+
+    $mover_lunes = function($mes, $dia) use ($year) {
+        $t = mktime(0, 0, 0, $mes, $dia, $year);
+        $dw = (int)date('N', $t); // 1 = Lunes, 7 = Domingo
+        if ($dw === 1) return date('Y-m-d', $t);
+        $diff = 8 - $dw;
+        return date('Y-m-d', strtotime("+{$diff} days", $t));
+    };
+
+    $festivos = [];
+
+    // 1. Días Fijos Inamovibles
+    $festivos[] = sprintf('%04d-01-01', $year); // Año Nuevo
+    $festivos[] = sprintf('%04d-05-01', $year); // Día del Trabajo
+    $festivos[] = sprintf('%04d-07-20', $year); // Independencia de Colombia
+    $festivos[] = sprintf('%04d-08-07', $year); // Batalla de Boyacá
+    $festivos[] = sprintf('%04d-12-08', $year); // Inmaculada Concepción
+    $festivos[] = sprintf('%04d-12-25', $year); // Navidad
+
+    // 2. Ley Emiliani (Se trasladan al siguiente Lunes)
+    $festivos[] = $mover_lunes(1, 6);   // Reyes Magos
+    $festivos[] = $mover_lunes(3, 19);  // San José
+    $festivos[] = $mover_lunes(6, 29);  // San Pedro y San Pablo
+    $festivos[] = $mover_lunes(8, 15);  // Asunción de la Virgen
+    $festivos[] = $mover_lunes(10, 12); // Día de la Raza
+    $festivos[] = $mover_lunes(11, 1);  // Todos los Santos
+    $festivos[] = $mover_lunes(11, 11); // Independencia de Cartagena
+
+    // 3. Basados en Pascua / Semana Santa
+    $festivos[] = date('Y-m-d', strtotime('-3 days', $pascua));  // Jueves Santo
+    $festivos[] = date('Y-m-d', strtotime('-2 days', $pascua));  // Viernes Santo
+    $festivos[] = date('Y-m-d', strtotime('+43 days', $pascua)); // Ascensión de Jesús
+    $festivos[] = date('Y-m-d', strtotime('+64 days', $pascua)); // Corpus Christi
+    $festivos[] = date('Y-m-d', strtotime('+71 days', $pascua)); // Sagrado Corazón de Jesús
+
+    sort($festivos);
+    return array_unique($festivos);
+}
+
+function es_festivo_colombia($fecha_str) {
+    $year = (int)date('Y', strtotime($fecha_str));
+    $festivos = get_festivos_colombia($year);
+    $soloFecha = date('Y-m-d', strtotime($fecha_str));
+    return in_array($soloFecha, $festivos);
+}
+
+/**
+ * Obtener la hora oficial de apertura de atención y normalización SLA según el día:
+ * - Lunes a Viernes no festivos: 07:00:00
+ * - Sábados, Domingos y Festivos: 08:00:00
+ */
+function get_horario_apertura_dia($fecha_str, $hora_semana_custom = null, $hora_festivo_custom = null) {
+    $dw = (int)date('N', strtotime($fecha_str)); // 1=Lunes ... 6=Sábado, 7=Domingo
+    $esFestivo = es_festivo_colombia($fecha_str);
+
+    $hora_semana  = !empty($hora_semana_custom) ? $hora_semana_custom : '07:00:00';
+    $hora_festivo = !empty($hora_festivo_custom) ? $hora_festivo_custom : '08:00:00';
+
+    if ($dw === 6 || $dw === 7 || $esFestivo) {
+        $tipo = $esFestivo ? 'FESTIVO' : ($dw === 6 ? 'SABADO' : 'DOMINGO');
+        $label = $esFestivo ? 'Día Festivo' : ($dw === 6 ? 'Sábado' : 'Domingo');
+        return [
+            'hora' => $hora_festivo,
+            'tipo_dia' => $tipo,
+            'es_festivo_o_finde' => true,
+            'label' => "{$label} (Apertura " . date('h:i A', strtotime($hora_festivo)) . ")"
+        ];
+    }
+
+    return [
+        'hora' => $hora_semana,
+        'tipo_dia' => 'HABIL',
+        'es_festivo_o_finde' => false,
+        'label' => "Lunes a Viernes (Apertura " . date('h:i A', strtotime($hora_semana)) . ")"
+    ];
 }

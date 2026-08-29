@@ -47,12 +47,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             header('Content-Type: application/json');
             echo json_encode([
                 'status' => $exito ? 'ok' : 'error',
-                'message' => $exito ? "Orden #{$ingreso_id} marcada como GESTIONADA y enviada al Módulo de Entrega & Facturación." : "Error al actualizar la orden."
+                'message' => $exito ? "Orden #{$ingreso_id} impresa y lista en espera física para Entrega & Facturación." : "Error al actualizar la orden."
             ]);
             exit;
         }
         if ($exito) {
-            $mensaje = "¡Orden #{$ingreso_id} marcada como GESTIONADA y enviada al Módulo de Entrega & Facturación!";
+            $mensaje = "¡Orden #{$ingreso_id} impresa y colocada en espera para Entrega & Facturación!";
         } else {
             $error = 'No se pudo actualizar el estado de la orden.';
         }
@@ -78,7 +78,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 }
 
 $listaAlistamiento = $ingresoModel->getListaAlistamiento('TODOS');
-$modulos_activos   = $modModel->getActivos();
+$sede_activa       = $_SESSION['active_sede_id'] ?? ($_SESSION['sede_id'] ?? null);
+$modulos_activos   = $modModel->getActivos($sede_activa);
 
 require_once __DIR__ . '/../layouts/header.php';
 ?>
@@ -123,6 +124,7 @@ require_once __DIR__ . '/../layouts/header.php';
                     <tr>
                         <th class="ps-3">Semaforización</th>
                         <th>Tiquete</th>
+                        <th>Sede</th>
                         <th>Hora Ingreso</th>
                         <th>Paciente</th>
                         <th>EPS</th>
@@ -132,7 +134,7 @@ require_once __DIR__ . '/../layouts/header.php';
                 </thead>
                 <tbody id="tabla-alistamiento-body">
                     <?php if (empty($listaAlistamiento)): ?>
-                        <tr><td colspan="7" class="text-center py-4 text-muted">No hay órdenes pendientes en la lista de alistamiento.</td></tr>
+                        <tr><td colspan="8" class="text-center py-4 text-muted">No hay órdenes pendientes en la lista de alistamiento.</td></tr>
                     <?php endif; ?>
 
                     <?php foreach ($listaAlistamiento as $row): ?>
@@ -147,6 +149,11 @@ require_once __DIR__ . '/../layouts/header.php';
                             </span>
                         </td>
                         <td class="fw-bold text-primary fs-5"><?= htmlspecialchars($row['ticket_numero']) ?></td>
+                        <td>
+                            <span class="badge bg-light text-dark border">
+                                <i class="fa-solid fa-location-dot text-warning me-1"></i> <?= htmlspecialchars($row['nombre_sede'] ?? 'Sede Principal') ?>
+                            </span>
+                        </td>
                         <td><?= date('h:i A', strtotime($row['fecha_ingreso'])) ?></td>
                         <td>
                             <div class="fw-bold">
@@ -508,19 +515,20 @@ function gestionarAlistamiento(id) {
 }
 
 function forzarDesbloqueoAlistamiento(id) {
-    if (!confirm("¿Está seguro de forzar el desbloqueo de esta orden como Administrador?")) return;
+    modalConfirm("¿Está seguro de forzar el desbloqueo de esta orden como Administrador?", () => {
+        const formData = new FormData();
+        formData.append('id', id);
+        formData.append('action', 'unlock');
+        formData.append('force', '1');
 
-    const formData = new FormData();
-    formData.append('id', id);
-    formData.append('action', 'unlock');
-    formData.append('force', '1');
-
-    fetch('api/lock_record.php', { method: 'POST', body: formData })
-        .then(res => res.json())
-        .then(res => {
-            alert(res.message);
-            refrescarListaTabla();
-        });
+        fetch('api/lock_record.php', { method: 'POST', body: formData })
+            .then(res => res.json())
+            .then(res => {
+                modalAlert(res.message, res.status === 'ok' ? 'success' : 'info', 'Desbloqueo de Orden', () => {
+                    refrescarListaTabla();
+                });
+            });
+    }, null, 'Forzar Desbloqueo', 'Sí, Desbloquear', 'Cancelar');
 }
 
 function iniciarHeartbeat(id) {
@@ -935,7 +943,7 @@ function renderizarTablaAlistamiento(lista, currentUserId, esAdmin) {
     if (badgeTotal) badgeTotal.textContent = `${lista.length} En Cola`;
 
     if (!lista || lista.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4 text-muted">No hay órdenes pendientes en la lista de alistamiento.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center py-4 text-muted">No hay órdenes pendientes en la lista de alistamiento.</td></tr>';
         return;
     }
 
@@ -968,6 +976,11 @@ function renderizarTablaAlistamiento(lista, currentUserId, esAdmin) {
                 </span>
             </td>
             <td class="fw-bold text-primary fs-5">${escapeHtml(row.ticket_numero)}</td>
+            <td>
+                <span class="badge bg-light text-dark border">
+                    <i class="fa-solid fa-location-dot text-warning me-1"></i> ${escapeHtml(row.nombre_sede || 'Sede Principal')}
+                </span>
+            </td>
             <td>${formatHora(row.fecha_ingreso)}</td>
             <td>
                 <div class="fw-bold">${escapeHtml(row.nombres + ' ' + row.apellidos)} ${prioBadge}</div>
@@ -983,40 +996,45 @@ function renderizarTablaAlistamiento(lista, currentUserId, esAdmin) {
 }
 
 function imprimirYEnviarAEntrega(id, pdfUrl, ticketNumero) {
-    if (!confirm(`¿Desea enviar a imprimir la orden transcrita y trasladar el tiquete ${ticketNumero} al Módulo de Entrega & Facturación?`)) {
-        return;
-    }
+    modalConfirm(
+        `¿Desea enviar a imprimir la orden transcrita y trasladar el tiquete <strong>${escapeHtml(ticketNumero)}</strong> al Módulo de Entrega & Facturación?`,
+        () => {
+            // 1. Abrir vista de impresión unificada (Tiquete de Turno + Orden Transcrita)
+            const printUrl = `index.php?page=imprimir_orden_unificada&id=${id}&auto_print=1`;
+            window.open(printUrl, '_blank');
 
-    // 1. Abrir vista de impresión unificada (Tiquete de Turno + Orden Transcrita)
-    const printUrl = `index.php?page=imprimir_orden_unificada&id=${id}&auto_print=1`;
-    window.open(printUrl, '_blank');
+            // 2. Remover visualmente de inmediato la fila de la grilla
+            const fila = document.getElementById(`fila-alistamiento-${id}`);
+            if (fila) {
+                fila.style.transition = 'opacity 0.3s ease';
+                fila.style.opacity = '0';
+                setTimeout(() => fila.remove(), 300);
+            }
 
-    // 2. Remover visualmente de inmediato la fila de la grilla
-    const fila = document.getElementById(`fila-alistamiento-${id}`);
-    if (fila) {
-        fila.style.transition = 'opacity 0.3s ease';
-        fila.style.opacity = '0';
-        setTimeout(() => fila.remove(), 300);
-    }
+            // 3. Marcar como gestionado y mover a Entrega & Facturación vía AJAX
+            const formData = new FormData();
+            formData.append('action', 'marcar_gestionado');
+            formData.append('ingreso_id', id);
+            formData.append('ajax', '1');
 
-    // 3. Marcar como gestionado y mover a Entrega & Facturación vía AJAX
-    const formData = new FormData();
-    formData.append('action', 'marcar_gestionado');
-    formData.append('ingreso_id', id);
-    formData.append('ajax', '1');
-
-    fetch('index.php?page=alistamiento', {
-        method: 'POST',
-        body: formData
-    })
-    .then(res => res.json())
-    .then(data => {
-        refrescarListaTabla();
-    })
-    .catch(err => {
-        console.error("Error al enviar a entrega:", err);
-        refrescarListaTabla();
-    });
+            fetch('index.php?page=alistamiento', {
+                method: 'POST',
+                body: formData
+            })
+            .then(res => res.json())
+            .then(data => {
+                refrescarListaTabla();
+            })
+            .catch(err => {
+                console.error("Error al enviar a entrega:", err);
+                refrescarListaTabla();
+            });
+        },
+        null,
+        'Confirmar Impresión y Traslado',
+        'Sí, Imprimir y Trasladar',
+        'Cancelar'
+    );
 }
 
 function getPrioridadBadge(prioridad) {

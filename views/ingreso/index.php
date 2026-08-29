@@ -1,4 +1,8 @@
 <?php
+header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
+header("Cache-Control: post-check=0, pre-check=0", false);
+header("Pragma: no-cache");
+
 require_once __DIR__ . '/../../config/app.php';
 check_role('ingreso');
 
@@ -131,8 +135,9 @@ require_once __DIR__ . '/../layouts/header.php';
 }
 .scanner-canvas-wrapper {
     width: 100%;
-    min-height: 380px;
-    max-height: 60vh;
+    height: 72vh;
+    min-height: 480px;
+    max-height: 82vh;
     background: #020617;
     border-radius: 12px;
     overflow: hidden;
@@ -145,13 +150,21 @@ require_once __DIR__ . '/../layouts/header.php';
 .scanner-canvas-wrapper video {
     width: 100%;
     height: 100%;
-    object-fit: contain;
+    object-fit: cover;
     background: #000;
 }
-.scanner-canvas-wrapper canvas {
+.scanner-canvas-wrapper canvas#scanner-live-overlay {
     width: 100%;
     height: 100%;
+    object-fit: cover;
+    pointer-events: none;
+}
+.scanner-canvas-wrapper canvas#scanner-canvas-overlay {
+    max-width: 100%;
+    max-height: 100%;
     object-fit: contain;
+    touch-action: none;
+    cursor: crosshair;
 }
 .scanner-shutter {
     width: 76px;
@@ -392,10 +405,11 @@ function ensureScannerLibsLoaded() {
         document.head.appendChild(s);
     };
 
-    // Cargar librerías esenciales primero (rápido y local)
+    // Cargar librerías esenciales primero (rápido y local con control de caché dinámico)
+    const vTs = Date.now();
     _scannerLibsPromise = Promise.all([
-        withRetry(() => loadScript('assets/js/scanner_detect.js', null, () => !!window.SISPAM_Scanner)),
-        withRetry(() => loadScript('assets/js/scanner_doc.js', null, () => typeof DocumentScannerPro !== 'undefined')),
+        withRetry(() => loadScript('assets/js/scanner_detect.js?v=' + vTs, null, null)),
+        withRetry(() => loadScript('assets/js/scanner_doc.js?v=' + vTs, null, null)),
         withRetry(() => loadScript('assets/js/vendor/jspdf.umd.min.js', 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js', () => !!(window.jspdf && window.jspdf.jsPDF)))
     ]).then(() => {
         // Cargar OpenCV en segundo plano sin demorar el visor de la cámara
@@ -1070,6 +1084,12 @@ function ensureScannerLibsLoaded() {
                         <!-- Overlay Canvas para ajuste interactivo de esquinas (después de capturar) -->
                         <canvas id="scanner-canvas-overlay" class="d-none position-absolute top-0 start-0"></canvas>
 
+                        <!-- Indicador visual en vivo del paso actual (Frente / Reverso) -->
+                        <div id="badge-paso-escaner" class="position-absolute top-0 start-50 translate-middle-x mt-2 px-3 py-1 rounded-pill bg-dark bg-opacity-75 text-white fw-bold small text-nowrap shadow d-none" style="z-index: 100;">
+                            <i class="fa-solid fa-id-card text-info me-1" id="icono-paso-escaner"></i>
+                            <span id="texto-paso-escaner">Paso 1 de 2: Frente de la Cédula</span>
+                        </div>
+
                         <!-- Lupa de precisión táctil -->
                         <div id="loupe-container" class="d-none">
                             <canvas id="canvas-loupe"></canvas>
@@ -1345,6 +1365,7 @@ function generarFilasSoportes(tiposRequeridos) {
                         <option value="ORDEN_MEDICA" ${defaultOpt === 'ORDEN_MEDICA' ? 'selected' : ''}>Fórmula / Orden Médica *</option>
                         <option value="AUTORIZACION" ${defaultOpt === 'AUTORIZACION' ? 'selected' : ''}>Autorización / Doc. Tercero *</option>
                         <option value="HISTORIA_CLINICA">Historia Clínica / Anexo</option>
+                        <option value="MIPRES">MIPRES</option>
                         <option value="OTRO">Otro Documento</option>
                     </select>
                 </div>
@@ -1507,6 +1528,7 @@ function agregarFilaDoc() {
                     <option value="ORDEN_MEDICA">Fórmula / Orden Médica</option>
                     <option value="AUTORIZACION" selected>Autorización de Servicios</option>
                     <option value="HISTORIA_CLINICA">Historia Clínica / Anexo</option>
+                    <option value="MIPRES">MIPRES</option>
                     <option value="OTRO">Otro Documento</option>
                 </select>
             </div>
@@ -1643,7 +1665,7 @@ const CONFIG_DOCUMENTOS = {
     // motivo de glosa al radicar ante la EPS.
     CEDULA: {
         titulo: 'Cédula / Documento de Identidad',
-        paginasEsperadas: 2,
+        paginasEsperadas: null,
         realce: 'ninguno',
         composicion: 'ambas-caras-una-pagina',
         rotulos: ['Frente', 'Reverso']
@@ -1665,6 +1687,12 @@ const CONFIG_DOCUMENTOS = {
     // Los tipos sin regla propia van sin realce: es el valor que nunca destruye información
     HISTORIA_CLINICA: {
         titulo: 'Historia Clínica / Anexo',
+        paginasEsperadas: null,
+        realce: 'ninguno',
+        composicion: 'una-por-pagina'
+    },
+    MIPRES: {
+        titulo: 'MIPRES / Direccionamiento',
         paginasEsperadas: null,
         realce: 'ninguno',
         composicion: 'una-por-pagina'
@@ -1826,19 +1854,37 @@ function aplicarTituloEscaner() {
     const cfg = configDoc(_categoriaEscaner);
     const elTitulo = document.getElementById('scanner-doc-titulo');
     const elPaso = document.getElementById('scanner-doc-paso');
+    const badgePaso = document.getElementById('badge-paso-escaner');
+    const textoPaso = document.getElementById('texto-paso-escaner');
+    const iconoPaso = document.getElementById('icono-paso-escaner');
+
     if (elTitulo) elTitulo.textContent = cfg.titulo;
 
-    if (!elPaso) return;
     const rotulo = (cfg.rotulos && cfg.paginasEsperadas && _capturasDelFlujo < cfg.paginasEsperadas)
         ? cfg.rotulos[_capturasDelFlujo]
         : null;
 
     if (rotulo) {
-        elPaso.textContent = `${rotulo} — ${_capturasDelFlujo + 1} de ${cfg.paginasEsperadas}`;
-        elPaso.classList.remove('d-none');
+        const textoMsg = `Paso ${_capturasDelFlujo + 1} de ${cfg.paginasEsperadas}: ${rotulo.toUpperCase()}`;
+        if (elPaso) {
+            elPaso.textContent = textoMsg;
+            elPaso.classList.remove('d-none');
+        }
+        if (badgePaso && textoPaso) {
+            badgePaso.classList.remove('d-none');
+            textoPaso.textContent = textoMsg;
+            if (iconoPaso) {
+                iconoPaso.className = (_capturasDelFlujo === 0)
+                    ? 'fa-solid fa-id-card text-info me-1'
+                    : 'fa-solid fa-rotate text-warning me-1';
+            }
+        }
     } else {
-        elPaso.textContent = '';
-        elPaso.classList.add('d-none');
+        if (elPaso) {
+            elPaso.textContent = '';
+            elPaso.classList.add('d-none');
+        }
+        if (badgePaso) badgePaso.classList.add('d-none');
     }
 }
 
@@ -1885,7 +1931,22 @@ function mostrarPantallaRevision() {
 function actualizarBotonesRevision() {
     if (!scannerPro) return;
     const hayAlgo = scannerPro.scannedPages.length > 0 || !!scannerPro.rawImage;
-    document.getElementById('btn-finalizar-pdf').classList.toggle('d-none', !hayAlgo);
+    const btnFinalizar = document.getElementById('btn-finalizar-pdf');
+    if (btnFinalizar) {
+        btnFinalizar.classList.toggle('d-none', !hayAlgo);
+    }
+
+    const btnOtra = document.getElementById('btn-agregar-otra-pag');
+    if (btnOtra) {
+        if (_categoriaEscaner === 'CEDULA' && scannerPro.scannedPages.length === 0) {
+            btnOtra.innerHTML = '<i class="fa-solid fa-rotate me-1"></i> Capturar Reverso';
+            btnOtra.className = 'btn btn-warning text-dark fw-bold btn-sm flex-fill shadow-sm';
+        } else {
+            btnOtra.innerHTML = '<i class="fa-solid fa-plus me-1"></i> Otra página';
+            btnOtra.className = 'btn btn-outline-info btn-sm fw-bold flex-fill';
+        }
+    }
+
     aplicarTituloEscaner();
 }
 
@@ -1944,6 +2005,38 @@ async function iniciarCamaraEscaner() {
 
 let _capturaEnCurso = false;
 
+function flashEfectoCamara() {
+    const w = document.querySelector('.scanner-canvas-wrapper');
+    if (!w) return;
+    w.classList.add('scanner-flash');
+    setTimeout(() => w.classList.remove('scanner-flash'), 180);
+}
+
+function mostrarAvisoFlotante(msg, ms = 4500) {
+    let t = document.getElementById('aviso-flotante-pantalla');
+    if (!t) {
+        t = document.createElement('div');
+        t.id = 'aviso-flotante-pantalla';
+        t.style.cssText = 'position:fixed;top:70px;left:50%;transform:translateX(-50%);z-index:99999999;padding:12px 24px;border-radius:30px;background:#059669;color:#ffffff;font-size:15px;font-weight:bold;box-shadow:0 12px 30px rgba(0,0,0,0.6);text-align:center;pointer-events:none;transition:all 0.3s ease;max-width:92vw;';
+        document.body.appendChild(t);
+    }
+    t.innerHTML = `<i class="fa-solid fa-circle-check me-2 fs-5"></i><span>${msg}</span>`;
+    t.style.display = 'block';
+    t.style.opacity = '1';
+    t.style.transform = 'translateX(-50%) translateY(0)';
+    setTimeout(() => {
+        if (t) {
+            t.style.opacity = '0';
+            t.style.transform = 'translateX(-50%) translateY(-15px)';
+            setTimeout(() => { if (t) t.style.display = 'none'; }, 350);
+        }
+    }, ms);
+}
+
+function mostrarToastEscaner(msg, ms = 3500) {
+    mostrarAvisoFlotante(msg, ms);
+}
+
 async function capturarFotoEscaner() {
     if (!scannerPro) scannerPro = new DocumentScannerPro();
 
@@ -1959,6 +2052,8 @@ async function capturarFotoEscaner() {
     // Evita capturar dos veces si la auto-captura y el botón manual coinciden.
     if (_capturaEnCurso) return;
     _capturaEnCurso = true;
+
+    flashEfectoCamara();
 
     const btnSnap = document.getElementById('btn-snap-cam');
     if (btnSnap) btnSnap.disabled = true;
@@ -1976,9 +2071,8 @@ async function capturarFotoEscaner() {
 
 /**
  * Qué pasa justo después de capturar.
- * En los tipos con flujo guiado (cédula: frente y reverso) las capturas intermedias NO
- * paran en la pantalla de revisión — se guardan y la cámara sigue activa con el rótulo
- * cambiado para capturar el reverso de inmediato.
+ * Pasa siempre a la pantalla de revisión donde el usuario ve la foto y tiene las opciones:
+ * "Tomar de nuevo", "Capturar Reverso" / "Otra página" y "Adjuntar".
  */
 async function trasCapturar() {
     if (!scannerPro || !scannerPro.rawImage) {
@@ -1988,7 +2082,6 @@ async function trasCapturar() {
 
     const cfg = configDoc(_categoriaEscaner);
 
-    // Realce del previo: lo que se revisa es la foto ya realzada, no la foto cruda.
     try {
         await scannerPro.construirPreviewRealzado(filtroDeRealce(cfg.realce));
     } catch (e) {
@@ -1997,23 +2090,7 @@ async function trasCapturar() {
 
     _capturasDelFlujo++;
 
-    const faltanCaras = cfg.paginasEsperadas && _capturasDelFlujo < cfg.paginasEsperadas;
-    if (faltanCaras) {
-        // Guardar esta cara y continuar con la cámara viva para la siguiente
-        scannerPro.processScan(filtroDeRealce(cfg.realce), _categoriaEscaner);
-        scannerPro.saveCurrentPageToDoc();
-        scannerPro.rawImage = null;
-        scannerPro.previewImage = null;
-        actualizarTiraMiniaturas();
-        mostrarPantallaCaptura();
-        // Si el stream de la cámara se hubiese detenido por alguna razón, reiniciarla
-        if (!scannerPro.stream) {
-            await iniciarCamaraEscaner();
-        }
-        return;
-    }
-
-    // Si ya completó todas las caras esperadas (o documento de 1 página), detener cámara y pasar a revisión
+    // Apagar cámara y pasar SIEMPRE a la pantalla de revisión con los 3 botones
     try { scannerPro.stopCamera(); } catch (e) {}
     mostrarPantallaRevision();
 }
@@ -2023,9 +2100,9 @@ function cargarFotoNativaEscaner(event) {
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = function(e) {
         const img = new Image();
-        img.onload = async () => {
+        img.onload = async function() {
             if (!scannerPro) scannerPro = new DocumentScannerPro();
             scannerPro.stopCamera();
             scannerPro._lastCaptureMethod = 'archivo nativo/galería';
@@ -2063,6 +2140,8 @@ function aplicarModoDepuracionEscaner() {
 async function guardarPaginaYOtra() {
     if (!scannerPro) return;
 
+    const esCedula = (_categoriaEscaner === 'CEDULA');
+
     if (scannerPro.rawImage) {
         const cfg = configDoc(_categoriaEscaner);
         scannerPro.processScan(filtroDeRealce(cfg.realce), _categoriaEscaner);
@@ -2072,12 +2151,21 @@ async function guardarPaginaYOtra() {
         actualizarTiraMiniaturas();
     }
 
-    // Salir del flujo guiado: a partir de aquí el orientador decide cuántas páginas más.
-    const cfg = configDoc(_categoriaEscaner);
-    if (cfg.paginasEsperadas) _capturasDelFlujo = cfg.paginasEsperadas;
-
     mostrarPantallaCaptura();
     await iniciarCamaraEscaner();
+
+    if (esCedula) {
+        mostrarAvisoFlotante('🔄 Gire la CÉDULA al Reverso en el atril. El escaneo iniciará en 2 segundos.', 4500);
+        if (scannerPro && scannerPro.liveDetector) {
+            scannerPro.liveDetector.autoCaptureEnabled = false;
+            setTimeout(() => {
+                if (scannerPro && scannerPro.liveDetector) {
+                    scannerPro.liveDetector.autoCaptureEnabled = true;
+                    scannerPro.liveDetector.resetAutoCapture();
+                }
+            }, 2500);
+        }
+    }
 }
 
 function actualizarTiraMiniaturas() {
@@ -2090,14 +2178,14 @@ function actualizarTiraMiniaturas() {
     // bloque permanente es scroll que el orientador tiene que hacer en cada paciente.
     if (bloque) bloque.classList.toggle('d-none', pages.length === 0);
     if (pages.length === 0) {
-        strip.innerHTML = '';
+        if (strip) strip.innerHTML = '';
         return;
     }
 
+    const cfg = configDoc(_categoriaEscaner);
+
     let html = '';
     pages.forEach((p, idx) => {
-        // El orden del arreglo es el orden de las hojas del PDF, así que las flechas
-        // reordenan de verdad el documento final, no solo la vista.
         const flechaIzq = idx > 0
             ? `<button type="button" class="page-thumb-move izq" title="Mover antes" onclick="moverPaginaEscaner(${idx}, -1)"><i class="fa-solid fa-chevron-left"></i></button>`
             : '';
@@ -2105,16 +2193,18 @@ function actualizarTiraMiniaturas() {
             ? `<button type="button" class="page-thumb-move der" title="Mover después" onclick="moverPaginaEscaner(${idx}, 1)"><i class="fa-solid fa-chevron-right"></i></button>`
             : '';
 
+        const rotulo = (cfg.rotulos && cfg.rotulos[idx]) ? cfg.rotulos[idx] : `Pág ${idx + 1}`;
+
         html += `
             <div class="page-thumb-item ${idx === scannerPro.currentPageIndex ? 'active' : ''}">
                 <img src="${p.dataUrl}" title="Clic para ver la página completa" onclick="verPaginaEscaner(${idx})">
-                <span class="page-thumb-badge">Pág ${idx + 1}</span>
+                <span class="page-thumb-badge" style="background:#0284c7;font-weight:bold;">${rotulo}</span>
                 <button type="button" class="page-thumb-delete" title="Eliminar página" onclick="borrarPaginaEscaner(${idx})"><i class="fa-solid fa-xmark"></i></button>
                 ${flechaIzq}${flechaDer}
             </div>
         `;
     });
-    strip.innerHTML = html;
+    if (strip) strip.innerHTML = html;
 }
 
 async function borrarPaginaEscaner(index) {

@@ -157,6 +157,7 @@ if (!empty($faltantesDetalle)) {
             <div class="col-md-6">
                 <div class="p-3 bg-light rounded border h-100">
                     <div class="fw-bold text-primary mb-2 border-bottom pb-1"><i class="fa-solid fa-hospital-user me-2"></i> DETALLES DE LA ATENCIÓN</div>
+                    <div><strong>Sede de Atención:</strong> <span class="badge bg-primary text-white"><i class="fa-solid fa-location-dot me-1"></i> <?= htmlspecialchars($ingreso['nombre_sede'] ?? ($ingreso['sede_nombre'] ?? 'Sede Principal')) ?></span></div>
                     <div><strong>Fecha de Ingreso:</strong> <?= date('d/m/Y h:i A', strtotime($ingreso['fecha_ingreso'])) ?></div>
                     <div><strong>Fecha de Entrega:</strong> <?= date('d/m/Y h:i A', strtotime($ingreso['updated_at'])) ?></div>
                     <div><strong>Ventanilla / Módulo:</strong> <span class="badge bg-success"><?= htmlspecialchars($ingreso['modulo_entrega_asignado'] ?? 'Ventanilla General') ?></span></div>

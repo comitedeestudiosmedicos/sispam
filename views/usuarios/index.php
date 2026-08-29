@@ -1,6 +1,6 @@
 <?php
 require_once __DIR__ . '/../../config/app.php';
-check_role(['Administrador']);
+check_role('usuarios');
 
 require_once __DIR__ . '/../../models/Usuario.php';
 require_once __DIR__ . '/../../models/Empresa.php';
@@ -12,6 +12,23 @@ $mensaje = '';
 $error = '';
 $subtab = $_GET['subtab'] ?? 'usuarios';
 
+// Módulos disponibles para asignación dinámica de permisos
+$modulos_disponibles = [
+    'ingreso'                  => 'Admisión / Ingreso de Pacientes',
+    'expedientes'              => 'Consulta de Expedientes / Órdenes',
+    'transcripcion'            => 'Transcripción & Verificación de Stock',
+    'monitoreo'                => 'Monitoreo & Verificación Técnica (Farmacéutico)',
+    'alistamiento'             => 'Alistamiento de Medicamentos (Picking)',
+    'supervision_alistamiento' => 'Supervisión de Alistamiento & Auditoría',
+    'entrega'                  => 'Factura & Entrega con Firma Digital',
+    'turneros'                 => 'Turneros TV en Pantalla (En Proceso / Listo Entrega)',
+    'reportes'                 => 'Reportes & Analítica SLA',
+    'empresa'                  => 'Parametrización de Empresa y Sedes',
+    'usuarios'                 => 'Gestión de Usuarios y Permisos',
+    'modulos'                  => 'Gestión de Ventanillas y Módulos',
+    'auditoria'                => 'Log de Auditoría & Trazabilidad'
+];
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     if ($_POST['action'] === 'crear') {
         $rol_id     = intval($_POST['rol_id'] ?? 0);
@@ -20,16 +37,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $nombre     = trim($_POST['nombre_completo'] ?? '');
         $user       = trim($_POST['usuario'] ?? '');
         $pass       = trim($_POST['password'] ?? '');
+        $sedes_adic = $_POST['sedes_adicionales'] ?? [];
 
         if ($rol_id && !empty($nombre) && !empty($user) && !empty($pass)) {
-            if ($usuarioModel->create($rol_id, $nombre, $user, $pass, $empresa_id, $sede_id)) {
-                registrar_log_auditoria('USUARIOS', 'CREAR_USUARIO', null, "Nuevo usuario registrado: {$user} ({$nombre})");
-                $mensaje = 'Usuario registrado exitosamente con asignación de empresa y sede.';
+            if ($usuarioModel->usuarioExiste($user)) {
+                $error = "El nombre de usuario '{$user}' ya se encuentra registrado en el sistema. Por favor elija un nombre de usuario diferente.";
             } else {
-                $error = 'Error al registrar usuario. Es posible que el nombre de usuario ya exista.';
+                try {
+                    if ($usuarioModel->create($rol_id, $nombre, $user, $pass, $empresa_id, $sede_id, $sedes_adic)) {
+                        registrar_log_auditoria('USUARIOS', 'CREAR_USUARIO', null, "Nuevo usuario registrado: {$user} ({$nombre})");
+                        $mensaje = "Usuario '{$user}' registrado exitosamente con asignación de empresa y sedes.";
+                    } else {
+                        $error = "No se pudo registrar el usuario. El nombre de usuario '{$user}' ya existe o ocurrió un problema en el registro.";
+                    }
+                } catch (Throwable $e) {
+                    $error = "El nombre de usuario '{$user}' ya se encuentra registrado en el sistema. Por favor intente con otro.";
+                }
             }
         } else {
-            $error = 'Por favor complete todos los campos obligatorios.';
+            $error = 'Por favor complete todos los campos obligatorios para registrar el usuario.';
         }
     } else if ($_POST['action'] === 'editar') {
         $id         = intval($_POST['id'] ?? 0);
@@ -40,13 +66,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $user       = trim($_POST['usuario'] ?? '');
         $estado     = $_POST['estado'] ?? 'ACTIVO';
         $pass       = trim($_POST['new_password'] ?? '');
+        $sedes_adic = $_POST['sedes_adicionales'] ?? [];
 
         if ($id && $rol_id && !empty($nombre) && !empty($user)) {
-            if ($usuarioModel->update($id, $rol_id, $nombre, $user, $estado, $pass, $empresa_id, $sede_id)) {
-                registrar_log_auditoria('USUARIOS', 'EDITAR_USUARIO', $id, "Datos del usuario #{$id} ({$user}) actualizados. Estado: {$estado}");
-                $mensaje = 'Datos del usuario, empresa y sede actualizados correctamente.';
+            if ($usuarioModel->usuarioExiste($user, $id)) {
+                $error = "El nombre de usuario '{$user}' ya está en uso por otro registro. Por favor elija un nombre de usuario diferente.";
             } else {
-                $error = 'No se pudo actualizar los datos del usuario.';
+                try {
+                    if ($usuarioModel->update($id, $rol_id, $nombre, $user, $estado, $pass, $empresa_id, $sede_id, $sedes_adic)) {
+                        registrar_log_auditoria('USUARIOS', 'EDITAR_USUARIO', $id, "Datos del usuario #{$id} ({$user}) actualizados. Estado: {$estado}");
+                        $mensaje = 'Datos del usuario, empresa y sedes actualizados correctamente.';
+                    } else {
+                        $error = "No se pudo actualizar los datos. El nombre de usuario '{$user}' ya se encuentra en uso.";
+                    }
+                } catch (Throwable $e) {
+                    $error = "El nombre de usuario '{$user}' ya se encuentra en uso.";
+                }
             }
         }
     } else if ($_POST['action'] === 'toggle_estado') {
@@ -61,11 +96,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         
         foreach ($roles_list as $r) {
             $r_id = $r['id'];
-            $permisos_seleccionados = $matriz[$r_id] ?? ['dashboard'];
-            $usuarioModel->updatePermisosRol($r_id, $permisos_seleccionados);
+            if ($r['nombre'] === 'Administrador') {
+                $usuarioModel->updatePermisosRol($r_id, array_keys($modulos_disponibles));
+            } else {
+                $permisos_seleccionados = $matriz[$r_id] ?? ['dashboard'];
+                $usuarioModel->updatePermisosRol($r_id, $permisos_seleccionados);
+            }
         }
 
-        // Actualizar los permisos en la sesión del usuario actual si es administrador
+        // Actualizar los permisos en la sesión del usuario actual
         $_SESSION['permisos'] = $usuarioModel->getPermisosRol($_SESSION['rol_id']);
         registrar_log_auditoria('USUARIOS', 'GUARDAR_MATRIZ_PERMISOS', null, "Matriz de permisos de módulos actualizada por el administrador.");
         $mensaje = 'Matriz de permisos de módulos actualizada correctamente para todos los roles.';
@@ -81,21 +120,6 @@ $usuarios = $usuarioModel->getAll();
 $roles    = $usuarioModel->getRoles();
 $empresas = $empresaModel->getTodasEmpresas();
 $sedes    = $empresaModel->getTodasSedes();
-
-// Módulos disponibles para asignación dinámica de permisos
-$modulos_disponibles = [
-    'ingreso'                  => 'Admisión / Ingreso de Pacientes',
-    'expedientes'              => 'Consulta de Expedientes',
-    'transcripcion'            => 'Transcripción & Verificación de Stock',
-    'monitoreo'                => 'Monitoreo & Verificación Técnica (Farmacéutico)',
-    'alistamiento'             => 'Alistamiento de Medicamentos (Picking)',
-    'supervision_alistamiento' => 'Supervisión de Alistamiento & Auditoría',
-    'entrega'                  => 'Factura & Entrega con Firma Digital',
-    'reportes'                 => 'Reportes & Analítica SLA',
-    'empresa'                  => 'Parametrización de la Empresa',
-    'usuarios'                 => 'Gestión de Usuarios y Permisos',
-    'auditoria'                => 'Log de Auditoría & Trazabilidad'
-];
 
 require_once __DIR__ . '/../layouts/header.php';
 ?>
@@ -143,6 +167,49 @@ require_once __DIR__ . '/../layouts/header.php';
 
 <?php if ($subtab === 'usuarios'): ?>
 <!-- PESTAÑA 1: LISTADO Y EDICIÓN DE USUARIOS -->
+
+<!-- BARRA DE BÚSQUEDA Y FILTROS EN TIEMPO REAL -->
+<div class="card card-glass border-0 shadow-sm mb-3 p-3">
+    <div class="row g-2 align-items-center">
+        <!-- Buscador General -->
+        <div class="col-md-5">
+            <div class="input-group">
+                <span class="input-group-text bg-white text-muted border-end-0"><i class="fa-solid fa-magnifying-glass"></i></span>
+                <input type="text" id="buscadorUsuarios" class="form-control border-start-0 ps-0" placeholder="Buscar por nombre, usuario, perfil, empresa o sede..." autocomplete="off">
+                <button class="btn btn-outline-secondary border-start-0" type="button" id="btnLimpiarBusqueda" title="Limpiar búsqueda" style="display: none;">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Filtro por Rol / Perfil -->
+        <div class="col-md-3">
+            <select id="filtroRol" class="form-select">
+                <option value="">-- Todos los Perfiles / Roles --</option>
+                <?php foreach ($roles as $r): ?>
+                    <option value="<?= htmlspecialchars(strtolower($r['nombre'])) ?>"><?= htmlspecialchars($r['nombre']) ?></option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+
+        <!-- Filtro por Estado -->
+        <div class="col-md-2">
+            <select id="filtroEstado" class="form-select">
+                <option value="">-- Todos los Estados --</option>
+                <option value="activo">Activo</option>
+                <option value="inactivo">Inactivo</option>
+            </select>
+        </div>
+
+        <!-- Contador de Resultados -->
+        <div class="col-md-2 text-md-end text-muted small">
+            <span id="contadorUsuarios" class="badge bg-light text-dark border p-2 w-100 shadow-sm">
+                <i class="fa-solid fa-users text-primary me-1"></i> <span id="totalVisible"><?= count($usuarios) ?></span> de <?= count($usuarios) ?> usuarios
+            </span>
+        </div>
+    </div>
+</div>
+
 <div class="card card-glass border-0 shadow-sm">
     <div class="card-body p-0">
         <div class="table-responsive">
@@ -160,13 +227,29 @@ require_once __DIR__ . '/../layouts/header.php';
                 </thead>
                 <tbody>
                     <?php foreach ($usuarios as $u): ?>
-                    <tr>
+                    <?php 
+                        $u_sedes_ids = $usuarioModel->getSedesIdsUsuario($u['id']);
+                        $u['sedes_ids'] = $u_sedes_ids;
+                        $u_sedes_list = $usuarioModel->getSedesUsuario($u['id']);
+                        $search_corpus = strtolower($u['nombre_completo'] . ' ' . $u['usuario'] . ' ' . ($u['rol_nombre'] ?? '') . ' ' . ($u['empresa_nombre'] ?? '') . ' ' . ($u['sede_nombre'] ?? ''));
+                    ?>
+                    <tr class="fila-usuario" 
+                        data-search="<?= htmlspecialchars($search_corpus) ?>" 
+                        data-role="<?= htmlspecialchars(strtolower($u['rol_nombre'] ?? '')) ?>" 
+                        data-status="<?= htmlspecialchars(strtolower($u['estado'] ?? '')) ?>">
                         <td class="ps-3 fw-bold">#<?= $u['id'] ?></td>
                         <td class="fw-bold"><?= htmlspecialchars($u['nombre_completo']) ?></td>
                         <td><code><?= htmlspecialchars($u['usuario']) ?></code></td>
                         <td>
                             <div class="fw-semibold text-dark small"><i class="fa-solid fa-building me-1 text-primary"></i> <?= htmlspecialchars($u['empresa_nombre'] ?? 'Empresa Principal') ?></div>
-                            <small class="text-muted"><i class="fa-solid fa-hospital-user me-1 text-success"></i> <?= htmlspecialchars($u['sede_nombre'] ?? 'Sede General') ?></small>
+                            <small class="text-muted"><i class="fa-solid fa-hospital-user me-1 text-success"></i> <?= htmlspecialchars($u['sede_nombre'] ?? 'Sede Principal') ?></small>
+                            <?php if (count($u_sedes_list) > 1): ?>
+                                <div class="mt-1">
+                                    <span class="badge bg-light text-primary border" title="<?= htmlspecialchars(implode(', ', array_column($u_sedes_list, 'nombre_sede'))) ?>">
+                                        <i class="fa-solid fa-layer-group me-1"></i> +<?= count($u_sedes_list) - 1 ?> Sedes Adicionales
+                                    </span>
+                                </div>
+                            <?php endif; ?>
                         </td>
                         <td><span class="badge bg-primary fs-6"><?= htmlspecialchars($u['rol_nombre']) ?></span></td>
                         <td>
@@ -194,6 +277,12 @@ require_once __DIR__ . '/../layouts/header.php';
                         </td>
                     </tr>
                     <?php endforeach; ?>
+                    <tr id="noResultsRow" style="display: none;">
+                        <td colspan="7" class="text-center py-4 text-muted">
+                            <i class="fa-solid fa-user-slash fs-3 d-block mb-2 text-secondary"></i>
+                            No se encontraron usuarios que coincidan con el criterio de búsqueda.
+                        </td>
+                    </tr>
                 </tbody>
             </table>
         </div>
@@ -278,7 +367,7 @@ require_once __DIR__ . '/../layouts/header.php';
                             </select>
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label fw-semibold">Sede de Atención Asignada <span class="text-danger">*</span></label>
+                            <label class="form-label fw-semibold">Sede Principal Asignada <span class="text-danger">*</span></label>
                             <select name="sede_id" class="form-select" required>
                                 <?php foreach ($sedes as $sd): ?>
                                     <option value="<?= $sd['id'] ?>"><?= htmlspecialchars($sd['nombre_sede']) ?> (<?= htmlspecialchars($sd['empresa_nombre']) ?>)</option>
@@ -302,9 +391,29 @@ require_once __DIR__ . '/../layouts/header.php';
                             <select name="rol_id" class="form-select" required>
                                 <option value="">-- Seleccionar Perfil --</option>
                                 <?php foreach ($roles as $r): ?>
-                                    <option value="<?= $r['id'] ?>"><?= htmlspecialchars($r['nombre']) ?> - <?= htmlspecialchars($r['descripcion']) ?></option>
+                                    <option value="<?= $r['id'] ?>"><?= htmlspecialchars($r['nombre'] ?? '') ?><?= !empty($r['descripcion']) ? ' - ' . htmlspecialchars($r['descripcion']) : '' ?></option>
                                 <?php endforeach; ?>
                             </select>
+                        </div>
+
+                        <!-- Multisede: Sedes Adicionales Habilitadas -->
+                        <div class="col-md-12 p-3 bg-light rounded border">
+                            <label class="form-label fw-bold text-primary mb-1">
+                                <i class="fa-solid fa-building-circle-check me-1"></i> Sedes Adicionales Habilitadas (Multisede)
+                            </label>
+                            <p class="text-muted small mb-2">Marque las sedes adicionales donde este usuario tiene autorización para laborar y cambiar en el menú superior:</p>
+                            <div class="row g-2">
+                                <?php foreach ($sedes as $sd): ?>
+                                <div class="col-md-6">
+                                    <div class="form-check">
+                                        <input class="form-check-input check-sede-crear" type="checkbox" name="sedes_adicionales[]" value="<?= $sd['id'] ?>" id="check_crear_sede_<?= $sd['id'] ?>">
+                                        <label class="form-check-label small" for="check_crear_sede_<?= $sd['id'] ?>">
+                                            <i class="fa-solid fa-location-dot text-primary me-1"></i> <?= htmlspecialchars($sd['nombre_sede']) ?> <span class="text-muted">(<?= htmlspecialchars($sd['empresa_nombre']) ?>)</span>
+                                        </label>
+                                    </div>
+                                </div>
+                                <?php endforeach; ?>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -340,10 +449,10 @@ require_once __DIR__ . '/../layouts/header.php';
                             </select>
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label fw-semibold">Sede de Atención Asignada <span class="text-danger">*</span></label>
+                            <label class="form-label fw-semibold">Sede Principal Asignada <span class="text-danger">*</span></label>
                             <select name="sede_id" id="edit_sede_id" class="form-select" required>
                                 <?php foreach ($sedes as $sd): ?>
-                                    <option value="<?= $sd['id'] ?>"><?= htmlspecialchars($sd['nombre_sede']) ?></option>
+                                    <option value="<?= $sd['id'] ?>"><?= htmlspecialchars($sd['nombre_sede']) ?> (<?= htmlspecialchars($sd['empresa_nombre']) ?>)</option>
                                 <?php endforeach; ?>
                             </select>
                         </div>
@@ -370,6 +479,27 @@ require_once __DIR__ . '/../layouts/header.php';
                                 <option value="INACTIVO">INACTIVO</option>
                             </select>
                         </div>
+
+                        <!-- Multisede: Sedes Adicionales Habilitadas en Edición -->
+                        <div class="col-md-12 p-3 bg-light rounded border">
+                            <label class="form-label fw-bold text-primary mb-1">
+                                <i class="fa-solid fa-building-circle-check me-1"></i> Sedes Adicionales Habilitadas (Multisede)
+                            </label>
+                            <p class="text-muted small mb-2">Marque las sedes adicionales donde este usuario tiene autorización para laborar y cambiar en el menú superior:</p>
+                            <div class="row g-2">
+                                <?php foreach ($sedes as $sd): ?>
+                                <div class="col-md-6">
+                                    <div class="form-check">
+                                        <input class="form-check-input check-sede-edit" type="checkbox" name="sedes_adicionales[]" value="<?= $sd['id'] ?>" id="check_edit_sede_<?= $sd['id'] ?>">
+                                        <label class="form-check-label small" for="check_edit_sede_<?= $sd['id'] ?>">
+                                            <i class="fa-solid fa-location-dot text-primary me-1"></i> <?= htmlspecialchars($sd['nombre_sede']) ?> <span class="text-muted">(<?= htmlspecialchars($sd['empresa_nombre']) ?>)</span>
+                                        </label>
+                                    </div>
+                                </div>
+                                <?php endforeach; ?>
+                            </div>
+                        </div>
+
                         <div class="col-md-12 p-3 bg-light rounded border">
                             <label class="form-label fw-semibold text-primary mb-1"><i class="fa-solid fa-key me-1"></i> Cambiar Contraseña (Opcional)</label>
                             <input type="password" name="new_password" class="form-control" placeholder="Dejar en blanco para mantener contraseña actual">
@@ -395,9 +525,78 @@ function abrirModalEditar(u) {
     if (document.getElementById('edit_empresa_id')) document.getElementById('edit_empresa_id').value = u.empresa_id || 1;
     if (document.getElementById('edit_sede_id')) document.getElementById('edit_sede_id').value = u.sede_id || 1;
 
+    // Limpiar y marcar las sedes asignadas
+    document.querySelectorAll('.check-sede-edit').forEach(cb => cb.checked = false);
+    if (u.sedes_ids && Array.isArray(u.sedes_ids)) {
+        u.sedes_ids.forEach(sid => {
+            const cb = document.getElementById('check_edit_sede_' + sid);
+            if (cb) cb.checked = true;
+        });
+    }
+
     const modal = new bootstrap.Modal(document.getElementById('modalEditarUsuario'));
     modal.show();
 }
+
+// Búsqueda y Filtros en Tiempo Real
+document.addEventListener('DOMContentLoaded', function() {
+    const searchInput = document.getElementById('buscadorUsuarios');
+    const roleFilter = document.getElementById('filtroRol');
+    const statusFilter = document.getElementById('filtroEstado');
+    const clearBtn = document.getElementById('btnLimpiarBusqueda');
+    const userRows = document.querySelectorAll('.fila-usuario');
+    const totalVisibleSpan = document.getElementById('totalVisible');
+    const noResultsRow = document.getElementById('noResultsRow');
+
+    function filtrarUsuarios() {
+        const query = searchInput ? searchInput.value.toLowerCase().trim() : '';
+        const rol = roleFilter ? roleFilter.value.toLowerCase().trim() : '';
+        const estado = statusFilter ? statusFilter.value.toLowerCase().trim() : '';
+
+        if (clearBtn) {
+            clearBtn.style.display = query.length > 0 ? 'block' : 'none';
+        }
+
+        let visibleCount = 0;
+
+        userRows.forEach(row => {
+            const rowText = row.getAttribute('data-search') || '';
+            const rowRole = (row.getAttribute('data-role') || '').toLowerCase();
+            const rowStatus = (row.getAttribute('data-status') || '').toLowerCase();
+
+            const matchesQuery = !query || rowText.includes(query);
+            const matchesRole = !rol || rowRole === rol;
+            const matchesStatus = !estado || rowStatus === estado;
+
+            if (matchesQuery && matchesRole && matchesStatus) {
+                row.style.display = '';
+                visibleCount++;
+            } else {
+                row.style.display = 'none';
+            }
+        });
+
+        if (totalVisibleSpan) {
+            totalVisibleSpan.textContent = visibleCount;
+        }
+
+        if (noResultsRow) {
+            noResultsRow.style.display = (visibleCount === 0) ? '' : 'none';
+        }
+    }
+
+    if (searchInput) searchInput.addEventListener('input', filtrarUsuarios);
+    if (roleFilter) roleFilter.addEventListener('change', filtrarUsuarios);
+    if (statusFilter) statusFilter.addEventListener('change', filtrarUsuarios);
+
+    if (clearBtn) {
+        clearBtn.addEventListener('click', function() {
+            searchInput.value = '';
+            filtrarUsuarios();
+            searchInput.focus();
+        });
+    }
+});
 </script>
 
 <?php require_once __DIR__ . '/../layouts/footer.php'; ?>

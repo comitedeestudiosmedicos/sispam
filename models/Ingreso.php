@@ -52,6 +52,14 @@ class Ingreso {
 
             $ext = strtolower(pathinfo($nombreOriginal, PATHINFO_EXTENSION));
             $tipo = $tipos[$idx] ?? 'OTRO';
+            $nameLower = strtolower($nombreOriginal);
+            if (empty($tipo) || $tipo === 'OTRO') {
+                if (strpos($nameLower, 'mipres') !== false) $tipo = 'MIPRES';
+                else if (strpos($nameLower, 'cedula') !== false) $tipo = 'CEDULA';
+                else if (strpos($nameLower, 'orden_medica') !== false || strpos($nameLower, 'formula') !== false) $tipo = 'ORDEN_MEDICA';
+                else if (strpos($nameLower, 'autorizacion') !== false) $tipo = 'AUTORIZACION';
+                else if (strpos($nameLower, 'historia') !== false) $tipo = 'HISTORIA_CLINICA';
+            }
             $recorte = !empty($recortes[$idx]) ? 1 : 0;
             $esValida = in_array($ext, $extensionesPermitidas);
 
@@ -129,6 +137,14 @@ class Ingreso {
 
                 foreach ($archivos_subidos as $key => $file_info) {
                     $tipo_doc_tag = $file_info['tipo'] ?? (is_string($key) ? $key : 'DOCUMENTO');
+                    if (empty($tipo_doc_tag) || $tipo_doc_tag === 'DOCUMENTO' || $tipo_doc_tag === 'OTRO') {
+                        $nameLower = strtolower($file_info['name'] ?? '');
+                        if (strpos($nameLower, 'mipres') !== false) $tipo_doc_tag = 'MIPRES';
+                        else if (strpos($nameLower, 'cedula') !== false) $tipo_doc_tag = 'CEDULA';
+                        else if (strpos($nameLower, 'orden') !== false || strpos($nameLower, 'formula') !== false) $tipo_doc_tag = 'ORDEN_MEDICA';
+                        else if (strpos($nameLower, 'autorizacion') !== false) $tipo_doc_tag = 'AUTORIZACION';
+                        else if (strpos($nameLower, 'historia') !== false) $tipo_doc_tag = 'HISTORIA_CLINICA';
+                    }
                     if (isset($file_info['tmp_name']) && is_uploaded_file($file_info['tmp_name'])) {
                         $ext = pathinfo($file_info['name'], PATHINFO_EXTENSION);
                         $clean_filename = strtolower($tipo_doc_tag) . '_' . time() . '_' . rand(100, 999) . '.' . $ext;
@@ -170,12 +186,17 @@ class Ingreso {
             SELECT p.*, i.*, i.id AS id,
                    u.nombre_completo AS orientador_nombre,
                    l.nombre_completo AS lock_user_nombre,
-                   s.nombre_sede AS sede_nombre
+                   COALESCE(s.nombre_sede, 'Sede Principal') AS nombre_sede,
+                   COALESCE(s.nombre_sede, 'Sede Principal') AS sede_nombre,
+                   s.direccion AS sede_direccion,
+                   s.telefono AS sede_telefono,
+                   COALESCE(e.razon_social, 'Empresa Principal') AS empresa_nombre
             FROM ingresos i
             JOIN pacientes p ON i.paciente_id = p.id
             JOIN usuarios u ON i.orientador_id = u.id
             LEFT JOIN usuarios l ON i.locked_by_user_id = l.id
             LEFT JOIN sedes s ON i.sede_id = s.id
+            LEFT JOIN empresas e ON s.empresa_id = e.id
             WHERE i.id = :id
         ");
         $stmt->execute([':id' => $id]);
@@ -184,7 +205,18 @@ class Ingreso {
         if ($ingreso) {
             $stmtDocs = $this->db->prepare("SELECT * FROM ingreso_documentos WHERE ingreso_id = :id");
             $stmtDocs->execute([':id' => $id]);
-            $ingreso['documentos'] = $stmtDocs->fetchAll();
+            $docs = $stmtDocs->fetchAll();
+            foreach ($docs as &$doc) {
+                if (empty($doc['tipo_documento']) || $doc['tipo_documento'] === 'DOCUMENTO' || $doc['tipo_documento'] === 'OTRO') {
+                    $s = strtolower(($doc['ruta_archivo'] ?? '') . ' ' . ($doc['nombre_original'] ?? ''));
+                    if (strpos($s, 'mipres') !== false) $doc['tipo_documento'] = 'MIPRES';
+                    else if (strpos($s, 'cedula') !== false) $doc['tipo_documento'] = 'CEDULA';
+                    else if (strpos($s, 'orden') !== false || strpos($s, 'formula') !== false) $doc['tipo_documento'] = 'ORDEN_MEDICA';
+                    else if (strpos($s, 'autorizacion') !== false) $doc['tipo_documento'] = 'AUTORIZACION';
+                    else if (strpos($s, 'historia') !== false) $doc['tipo_documento'] = 'HISTORIA_CLINICA';
+                }
+            }
+            $ingreso['documentos'] = $docs;
         }
 
         return $ingreso;
@@ -196,16 +228,18 @@ class Ingreso {
             SELECT i.*, p.tipo_documento, p.numero_documento, p.nombres, p.apellidos, p.eps_nombre,
                    u.nombre_completo AS orientador_nombre,
                    l.nombre_completo AS locked_by_nombre,
+                   COALESCE(s.nombre_sede, 'Sede Principal') AS nombre_sede,
                    (SELECT COUNT(*) FROM ingreso_documentos d WHERE d.ingreso_id = i.id) AS num_docs
             FROM ingresos i
             JOIN pacientes p ON i.paciente_id = p.id
             JOIN usuarios u ON i.orientador_id = u.id
             LEFT JOIN usuarios l ON i.locked_by_user_id = l.id
+            LEFT JOIN sedes s ON i.sede_id = s.id
             WHERE i.estado_tramite IN ('INGRESADO', 'EN_TRANSCRIPCION')";
 
         $params = [];
         $active_sede = $_SESSION['active_sede_id'] ?? $_SESSION['sede_id'] ?? null;
-        if ($active_sede && ($_SESSION['rol_nombre'] ?? '') !== 'Administrador') {
+        if (!empty($active_sede)) {
             $sql .= " AND (i.sede_id IS NULL OR i.sede_id = :sede_id)";
             $params[':sede_id'] = $active_sede;
         }
@@ -221,51 +255,49 @@ class Ingreso {
         $this->db->exec("SET time_zone = '-05:00'");
         $this->db->exec("UPDATE ingresos SET locked_by_user_id = NULL, locked_at = NULL WHERE locked_at IS NOT NULL AND locked_at < DATE_SUB(NOW(), INTERVAL 10 MINUTE)");
 
-        $stmtCheck = $this->db->prepare("SELECT locked_by_user_id FROM ingresos WHERE id = :id");
-        $stmtCheck->execute([':id' => $ingreso_id]);
-        $current_lock = $stmtCheck->fetchColumn();
+        // Verificar si ya está bloqueado por otro usuario activo
+        $stmt = $this->db->prepare("
+            SELECT locked_by_user_id, locked_at 
+            FROM ingresos 
+            WHERE id = :id AND locked_by_user_id IS NOT NULL AND locked_by_user_id != :uid
+        ");
+        $stmt->execute([':id' => $ingreso_id, ':uid' => $user_id]);
+        $lock = $stmt->fetch();
 
-        if ($current_lock && $current_lock != $user_id) {
-            return false;
+        if ($lock) {
+            return false; // Bloqueado por otro usuario
         }
 
+        // Adquirir bloqueo
         $stmt = $this->db->prepare("
-            UPDATE ingresos SET 
-                locked_by_user_id = :user_id, 
-                locked_at = NOW(), 
-                estado_tramite = IF(estado_tramite = 'INGRESADO', 'EN_TRANSCRIPCION', estado_tramite)
+            UPDATE ingresos 
+            SET locked_by_user_id = :uid, locked_at = NOW() 
             WHERE id = :id
         ");
-        $stmt->execute([':user_id' => $user_id, ':id' => $ingreso_id]);
-        registrar_log_auditoria('TRANSCRIPCION', 'BLOQUEAR_REGISTRO', $ingreso_id, "Orden #{$ingreso_id} tomada para transcripción (bloqueo de concurrencia).");
-        return true;
+        return $stmt->execute([':uid' => $user_id, ':id' => $ingreso_id]);
     }
 
     public function unlockRecord($ingreso_id, $user_id) {
         $stmt = $this->db->prepare("
-            UPDATE ingresos SET 
-                locked_by_user_id = NULL, 
-                locked_at = NULL,
-                estado_tramite = IF(estado_tramite = 'EN_TRANSCRIPCION', 'INGRESADO', estado_tramite)
-            WHERE id = :id AND locked_by_user_id = :user_id
+            UPDATE ingresos 
+            SET locked_by_user_id = NULL, locked_at = NULL 
+            WHERE id = :id AND locked_by_user_id = :uid
         ");
-        return $stmt->execute([':id' => $ingreso_id, ':user_id' => $user_id]);
+        return $stmt->execute([':id' => $ingreso_id, ':uid' => $user_id]);
     }
 
     public function unlockRecordForce($ingreso_id) {
         $stmt = $this->db->prepare("
-            UPDATE ingresos SET 
-                locked_by_user_id = NULL, 
-                locked_at = NULL,
-                estado_tramite = IF(estado_tramite = 'EN_TRANSCRIPCION', 'INGRESADO', estado_tramite)
+            UPDATE ingresos 
+            SET locked_by_user_id = NULL, locked_at = NULL 
             WHERE id = :id
         ");
         return $stmt->execute([':id' => $ingreso_id]);
     }
 
-    public function guardarTranscripcion($ingreso_id, $pdf_file = null, $user_id = null) {
+    public function guardarTranscripcion($ingreso_id, $pdf_file = null, $user_id = null, $contiene_mipres = null) {
         $ingreso = $this->getById($ingreso_id);
-        $ruta_pdf = $ingreso['pdf_transcripcion_url'];
+        $ruta_pdf = null;
 
         if ($pdf_file && isset($pdf_file['tmp_name']) && is_uploaded_file($pdf_file['tmp_name'])) {
             $rel_dir = 'assets/uploads/pacientes/' . $ingreso['tipo_documento'] . '_' . $ingreso['numero_documento'] . '/transcripciones/';
@@ -281,82 +313,117 @@ class Ingreso {
 
         $stmt = $this->db->prepare("
             UPDATE ingresos SET 
-                estado_tramite = 'TRANSCRITO_COMPLETO', 
-                pdf_transcripcion_url = :pdf, 
-                locked_by_user_id = NULL, 
-                locked_at = NULL 
+                estado_tramite = 'TRANSCRITO', 
+                pdf_transcripcion_url = COALESCE(:pdf, pdf_transcripcion_url),
+                contiene_mipres = COALESCE(:mipres, contiene_mipres),
+                locked_by_user_id = NULL,
+                locked_at = NULL
             WHERE id = :id
         ");
         $res = $stmt->execute([
             ':pdf' => $ruta_pdf,
+            ':mipres' => $contiene_mipres,
             ':id' => $ingreso_id
         ]);
+
+        if ($user_id) {
+            try {
+                $stmtUser = $this->db->prepare("UPDATE ingresos SET transcrito_por_user_id = :uid, fecha_transcrito = NOW() WHERE id = :id");
+                $stmtUser->execute([':uid' => $user_id, ':id' => $ingreso_id]);
+            } catch (Exception $e) {}
+        }
+
+        try { $this->db->exec("DELETE FROM `locks` WHERE `record_id` = " . intval($ingreso_id)); } catch (Exception $e) {}
+
         if ($res) {
-            registrar_log_auditoria('TRANSCRIPCION', 'GUARDAR_TRANSCRIPCION', $ingreso_id, "Transcripción completada con PDF e inventario verificado para la orden #{$ingreso_id}. Tiquete: " . ($ingreso['ticket_numero'] ?? 'N/A'));
+            registrar_log_auditoria('TRANSCRIPCION', 'GUARDAR_TRANSCRIPCION', $ingreso_id, "Orden transcrita y enviada a Monitoreo. Tiquete: " . ($ingreso['ticket_numero'] ?? 'N/A'));
         }
         return $res;
     }
 
     public function reportarEstadoStockAlistamiento($ingreso_id, $estado, $observaciones) {
+        $nuevo_estado = ($estado === 'COMPLETO') ? 'TRANSCRITO_COMPLETO' : 'TRANSCRITO_PENDIENTE';
         $ingreso = $this->getById($ingreso_id);
+        $modulo_asignado = null;
+
+        if ($nuevo_estado === 'TRANSCRITO_COMPLETO') {
+            $bal = $this->obtenerModuloEquitativo($ingreso['sede_id'] ?? null);
+            $modulo_asignado = $bal['modulo'];
+        }
+
         $stmt = $this->db->prepare("
             UPDATE ingresos SET 
                 estado_tramite = :estado, 
-                observaciones_pendientes = :obs 
+                observaciones_pendientes = :obs,
+                modulo_entrega_asignado = COALESCE(:modulo, modulo_entrega_asignado)
             WHERE id = :id
         ");
-        $success = $stmt->execute([
-            ':estado' => $estado,
+        $res = $stmt->execute([
+            ':estado' => $nuevo_estado,
             ':obs' => $observaciones,
+            ':modulo' => $modulo_asignado,
             ':id' => $ingreso_id
         ]);
-
-        if ($success && in_array($estado, ['TRANSCRITO_PENDIENTE', 'SIN_STOCK'])) {
-            $notif = new Notificacion();
-            $txtEstado = ($estado === 'TRANSCRITO_PENDIENTE') ? 'CON MEDICAMENTOS PENDIENTES' : 'SIN STOCK';
-            $msg = "⚠️ ATENCIÓN (ALISTAMIENTO): El paciente {$ingreso['nombres']} {$ingreso['apellidos']} (Tiquete: {$ingreso['ticket_numero']}) ha sido reportado por Alistamiento como {$txtEstado}. Detalle: {$observaciones}";
-            $notif->create($ingreso_id, $ingreso['orientador_id'], $msg);
+        if ($res) {
+            registrar_log_auditoria('STOCK', 'REPORTAR_STOCK', $ingreso_id, "Estado de stock reportado: {$nuevo_estado}. Observaciones: {$observaciones}");
         }
-
-        return $success;
+        return $res;
     }
 
-    // Lista de trabajo para Alistamiento (Módulo 6) con prioridad antepuesta y bloqueo de concurrencia
     // Lista de trabajo para Alistamiento con prioridad antepuesta y desbloqueado universal
     public function getListaAlistamiento($filtro = 'TODOS') {
         $this->asegurarTablaLocks();
         $sql = "
             SELECT i.*, p.tipo_documento, p.numero_documento, p.nombres, p.apellidos, p.eps_nombre,
-                   l.nombre_completo AS locked_by_nombre
+                   l.nombre_completo AS locked_by_nombre,
+                   COALESCE(s.nombre_sede, 'Sede Principal') AS nombre_sede
             FROM ingresos i
             LEFT JOIN pacientes p ON i.paciente_id = p.id
             LEFT JOIN usuarios l ON i.locked_by_user_id = l.id
-            WHERE i.estado_tramite NOT IN ('ALISTADO', 'GESTIONADO', 'ENTREGADO', 'CANCELADO')";
+            LEFT JOIN sedes s ON i.sede_id = s.id
+            WHERE i.estado_tramite IN ('VERIFICADO', 'VERIFICADA')";
+
+        $params = [];
+        $active_sede = $_SESSION['active_sede_id'] ?? $_SESSION['sede_id'] ?? null;
+        if (!empty($active_sede)) {
+            $sql .= " AND (i.sede_id IS NULL OR i.sede_id = :sede_id)";
+            $params[':sede_id'] = $active_sede;
+        }
 
         if (!empty($filtro) && $filtro !== 'TODOS') {
-            $sql .= " AND i.estado_tramite = " . $this->db->quote($filtro);
+            $sql .= " AND i.estado_tramite = :filtro";
+            $params[':filtro'] = $filtro;
         }
 
         $sql .= " ORDER BY IF(i.prioridad = 'NORMAL', 1, 0) ASC, i.fecha_ingreso ASC";
-        $stmt = $this->db->query($sql);
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
         return $stmt->fetchAll();
     }
 
-    public function obtenerModuloEquitativo() {
+    public function obtenerModuloEquitativo($sede_id = null) {
         require_once __DIR__ . '/ModuloEntrega.php';
         $modModel = new ModuloEntrega();
-        $modulos = $modModel->getActivos();
+        $modulos = $modModel->getActivos($sede_id);
         
         if (empty($modulos)) {
-            return ['modulo' => 'Ventanilla 1', 'cola_actual' => 0];
+            return ['modulo' => 'MÓDULO 1', 'cola_actual' => 0];
         }
 
-        $stmt = $this->db->query("
+        $sql = "
             SELECT modulo_entrega_asignado, COUNT(*) as total 
             FROM ingresos 
-            WHERE estado_tramite = 'ALISTADO' 
-            GROUP BY modulo_entrega_asignado
-        ");
+            WHERE estado_tramite = 'ALISTADO'
+        ";
+        $params = [];
+        if (!empty($sede_id)) {
+            $sql .= " AND sede_id = :sede_id";
+            $params[':sede_id'] = $sede_id;
+        }
+        $sql .= " GROUP BY modulo_entrega_asignado";
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
         $filas = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
 
         $colas = [];
@@ -377,6 +444,7 @@ class Ingreso {
 
     public function guardarAlistamiento($ingreso_id, $pdf_file = null, $faltantes_text = '', $user_id = null, $modulo_entrega = 'AUTO') {
         $ingreso = $this->getById($ingreso_id);
+        $sede_id = $ingreso['sede_id'] ?? ($_SESSION['active_sede_id'] ?? ($_SESSION['sede_id'] ?? 1));
         $ruta_pdf = $ingreso['pdf_alistamiento'] ?? null;
 
         if ($pdf_file && isset($pdf_file['tmp_name']) && is_uploaded_file($pdf_file['tmp_name'])) {
@@ -392,7 +460,7 @@ class Ingreso {
         }
 
         if (empty($modulo_entrega) || strtoupper(trim($modulo_entrega)) === 'AUTO') {
-            $bal = $this->obtenerModuloEquitativo();
+            $bal = $this->obtenerModuloEquitativo($sede_id);
             $modulo_entrega = $bal['modulo'];
         }
 
@@ -424,14 +492,16 @@ class Ingreso {
     public function getListaEntrega($modulo_filtro = null) {
         $sql = "
             SELECT i.*, p.tipo_documento, p.numero_documento, p.nombres, p.apellidos, p.eps_nombre, p.telefono,
+                   COALESCE(s.nombre_sede, 'Sede Principal') AS nombre_sede,
                    (SELECT d.ruta_archivo FROM ingreso_documentos d WHERE d.ingreso_id = i.id AND (d.tipo_documento LIKE '%FORMULA%' OR d.tipo_documento LIKE '%TRANSCRIPCION%') ORDER BY d.id DESC LIMIT 1) AS pdf_documento_ingreso
             FROM ingresos i
             JOIN pacientes p ON i.paciente_id = p.id
+            LEFT JOIN sedes s ON i.sede_id = s.id
             WHERE i.estado_tramite IN ('ALISTADO', 'TRANSCRITO_COMPLETO', 'TRANSCRITO_PENDIENTE')";
         
         $params = [];
         $active_sede = $_SESSION['active_sede_id'] ?? $_SESSION['sede_id'] ?? null;
-        if ($active_sede && ($_SESSION['rol_nombre'] ?? '') !== 'Administrador') {
+        if (!empty($active_sede)) {
             $sql .= " AND (i.sede_id IS NULL OR i.sede_id = :sede_id)";
             $params[':sede_id'] = $active_sede;
         }
@@ -506,51 +576,91 @@ class Ingreso {
         return $res;
     }
 
-    public function getTurnero1() {
-        $stmt = $this->db->query("
-            SELECT i.ticket_numero, p.nombres, p.apellidos, i.estado_tramite, i.fecha_ingreso, i.prioridad
+    public function getTurnero1($sede_id = null) {
+        $sql = "
+            SELECT i.ticket_numero, p.nombres, p.apellidos, i.estado_tramite, i.fecha_ingreso, i.prioridad,
+                   COALESCE(s.nombre_sede, 'Sede Principal') AS nombre_sede
             FROM ingresos i
             JOIN pacientes p ON i.paciente_id = p.id
+            LEFT JOIN sedes s ON i.sede_id = s.id
             WHERE i.estado_tramite IN ('INGRESADO', 'EN_TRANSCRIPCION', 'TRANSCRITO_COMPLETO', 'TRANSCRITO_PENDIENTE')
-            ORDER BY IF(i.prioridad = 'NORMAL', 1, 0) ASC, i.fecha_ingreso ASC
-            LIMIT 12
-        ");
+        ";
+        $params = [];
+        if (!empty($sede_id)) {
+            $sql .= " AND (i.sede_id IS NULL OR i.sede_id = :sede_id)";
+            $params[':sede_id'] = $sede_id;
+        }
+        $sql .= " ORDER BY IF(i.prioridad = 'NORMAL', 1, 0) ASC, i.fecha_ingreso ASC LIMIT 12";
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
         return $stmt->fetchAll();
     }
 
-    public function getTurnero2() {
-        $stmt = $this->db->query("
-            SELECT i.id, i.ticket_numero, i.modulo_entrega_asignado, p.nombres, p.apellidos, i.updated_at, i.prioridad
+    public function getTurnero2($sede_id = null) {
+        $sql = "
+            SELECT i.id, i.ticket_numero, i.modulo_entrega_asignado, p.nombres, p.apellidos, i.updated_at, i.prioridad,
+                   COALESCE(s.nombre_sede, 'Sede Principal') AS nombre_sede
             FROM ingresos i
             JOIN pacientes p ON i.paciente_id = p.id
-            WHERE i.estado_tramite = 'ALISTADO'
-            ORDER BY IF(i.prioridad = 'NORMAL', 1, 0) ASC, i.updated_at DESC
-            LIMIT 10
-        ");
+            LEFT JOIN sedes s ON i.sede_id = s.id
+            WHERE i.estado_tramite = 'EN_ENTREGA'
+        ";
+        $params = [];
+        if (!empty($sede_id)) {
+            $sql .= " AND (i.sede_id IS NULL OR i.sede_id = :sede_id)";
+            $params[':sede_id'] = $sede_id;
+        }
+        $sql .= " ORDER BY i.updated_at DESC LIMIT 10";
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
         return $stmt->fetchAll();
     }
 
     public function buscarPorDocumento($num_doc) {
+        $criterio = trim($num_doc);
         $stmt = $this->db->prepare("
             SELECT p.*, i.*, i.id AS id,
-                   u.nombre_completo AS orientador_nombre
+                   u.nombre_completo AS orientador_nombre,
+                   COALESCE(s.nombre_sede, 'Sede Principal') AS nombre_sede,
+                   COALESCE(s.nombre_sede, 'Sede Principal') AS sede_nombre,
+                   s.direccion AS sede_direccion,
+                   s.telefono AS sede_telefono,
+                   COALESCE(e.razon_social, 'Empresa Principal') AS empresa_nombre
             FROM ingresos i
             JOIN pacientes p ON i.paciente_id = p.id
             JOIN usuarios u ON i.orientador_id = u.id
-            WHERE p.numero_documento = :doc
+            LEFT JOIN sedes s ON i.sede_id = s.id
+            LEFT JOIN empresas e ON s.empresa_id = e.id
+            WHERE TRIM(p.numero_documento) = :doc
+               OR TRIM(i.ticket_numero) = :tkt
+               OR i.ticket_numero LIKE :tktLike
+               OR p.numero_documento LIKE :docLike
+               OR p.nombres LIKE :nomLike
+               OR p.apellidos LIKE :apeLike
+               OR CONCAT(p.nombres, ' ', p.apellidos) LIKE :nomCompLike
             ORDER BY i.fecha_ingreso DESC
         ");
-        $stmt->execute([':doc' => $num_doc]);
+        $stmt->execute([
+            ':doc'         => $criterio,
+            ':tkt'         => $criterio,
+            ':tktLike'     => '%' . $criterio . '%',
+            ':docLike'     => '%' . $criterio . '%',
+            ':nomLike'     => '%' . $criterio . '%',
+            ':apeLike'     => '%' . $criterio . '%',
+            ':nomCompLike' => '%' . $criterio . '%'
+        ]);
         return $stmt->fetchAll();
     }
 
-    public function getReportePacientes($fecha_desde = null, $fecha_hasta = null, $eps = null, $estado = null) {
+    public function getReportePacientes($fecha_desde = null, $fecha_hasta = null, $eps = null, $estado = null, $sede_id = null) {
         $sql = "
             SELECT p.*, i.*, i.id AS id,
-                   u.nombre_completo AS orientador_nombre
+                   u.nombre_completo AS orientador_nombre,
+                   COALESCE(s.nombre_sede, 'Sede Principal') AS nombre_sede
             FROM ingresos i
             JOIN pacientes p ON i.paciente_id = p.id
             JOIN usuarios u ON i.orientador_id = u.id
+            LEFT JOIN sedes s ON i.sede_id = s.id
             WHERE 1=1
         ";
         $params = [];
@@ -571,6 +681,10 @@ class Ingreso {
             $sql .= " AND i.estado_tramite = :estado";
             $params[':estado'] = $estado;
         }
+        if (!empty($sede_id)) {
+            $sql .= " AND i.sede_id = :sede_id";
+            $params[':sede_id'] = $sede_id;
+        }
 
         $sql .= " ORDER BY i.fecha_ingreso DESC";
         $stmt = $this->db->prepare($sql);
@@ -578,11 +692,12 @@ class Ingreso {
         return $stmt->fetchAll();
     }
 
-    public function getReporteTiemposSLA($fecha_desde = null, $fecha_hasta = null) {
+    public function getReporteTiemposSLA($fecha_desde = null, $fecha_hasta = null, $sede_id = null) {
         $sql = "
             SELECT i.id AS id, i.ticket_numero, i.fecha_ingreso, i.updated_at AS fecha_finalizacion, i.estado_tramite, i.modulo_entrega_asignado, i.prioridad,
                    p.tipo_documento, p.numero_documento, p.nombres, p.apellidos, p.eps_nombre,
                    u.nombre_completo AS orientador_nombre,
+                   COALESCE(s.nombre_sede, 'Sede Principal') AS nombre_sede,
                    COALESCE(s.hora_apertura_atencion, ec.hora_apertura_atencion, '07:20:00') AS hora_apertura_oficial
             FROM ingresos i
             JOIN pacientes p ON i.paciente_id = p.id
@@ -601,6 +716,10 @@ class Ingreso {
             $sql .= " AND DATE(i.fecha_ingreso) <= :f_hasta";
             $params[':f_hasta'] = $fecha_hasta;
         }
+        if (!empty($sede_id)) {
+            $sql .= " AND i.sede_id = :sede_id";
+            $params[':sede_id'] = $sede_id;
+        }
 
         $sql .= " ORDER BY i.fecha_ingreso DESC";
         $stmt = $this->db->prepare($sql);
@@ -612,8 +731,14 @@ class Ingreso {
                 $fechaIngreso = new DateTime($r['fecha_ingreso']);
                 $fechaFinal   = !empty($r['fecha_finalizacion']) ? new DateTime($r['fecha_finalizacion']) : new DateTime();
                 
-                $horaAperturaStr = !empty($r['hora_apertura_oficial']) ? $r['hora_apertura_oficial'] : '07:20:00';
-                $fechaApertura   = new DateTime($fechaIngreso->format('Y-m-d') . ' ' . $horaAperturaStr);
+                // Horario dinámico: L-V 7:00 AM | Sábados, Domingos y Festivos 8:00 AM
+                $horarioInfo = get_horario_apertura_dia($r['fecha_ingreso'], $r['hora_apertura_oficial'] ?? '07:00:00', '08:00:00');
+                $r['hora_apertura_oficial']  = $horarioInfo['hora'];
+                $r['tipo_dia_atencion']      = $horarioInfo['tipo_dia'];
+                $r['label_horario_apertura'] = $horarioInfo['label'];
+                $r['es_festivo_o_finde']     = $horarioInfo['es_festivo_o_finde'];
+
+                $fechaApertura = new DateTime($fechaIngreso->format('Y-m-d') . ' ' . $horarioInfo['hora']);
                 
                 $diffTotalSeg = max(0, $fechaFinal->getTimestamp() - $fechaIngreso->getTimestamp());
                 $r['tiempo_total_minutos'] = round($diffTotalSeg / 60, 1);
@@ -641,13 +766,15 @@ class Ingreso {
         return $results;
     }
 
-    public function getReportePendientes($fecha_desde = null, $fecha_hasta = null) {
+    public function getReportePendientes($fecha_desde = null, $fecha_hasta = null, $sede_id = null) {
         $sql = "
             SELECT p.*, i.*, i.id AS id,
-                   u.nombre_completo AS orientador_nombre
+                   u.nombre_completo AS orientador_nombre,
+                   COALESCE(s.nombre_sede, 'Sede Principal') AS nombre_sede
             FROM ingresos i
             JOIN pacientes p ON i.paciente_id = p.id
             JOIN usuarios u ON i.orientador_id = u.id
+            LEFT JOIN sedes s ON i.sede_id = s.id
             WHERE (
                 i.estado_tramite IN ('TRANSCRITO_PENDIENTE', 'SIN_STOCK') 
                 OR (i.observaciones_pendientes IS NOT NULL AND TRIM(i.observaciones_pendientes) != '')
@@ -670,6 +797,10 @@ class Ingreso {
             $sql .= " AND DATE(i.fecha_ingreso) <= :f_hasta";
             $params[':f_hasta'] = $fecha_hasta;
         }
+        if (!empty($sede_id)) {
+            $sql .= " AND i.sede_id = :sede_id";
+            $params[':sede_id'] = $sede_id;
+        }
 
         $sql .= " ORDER BY i.fecha_ingreso DESC";
         $stmt = $this->db->prepare($sql);
@@ -677,34 +808,42 @@ class Ingreso {
         return $stmt->fetchAll();
     }
 
-    public function getReporteProductividad($fecha_desde = null, $fecha_hasta = null) {
+    public function getReporteProductividad($fecha_desde = null, $fecha_hasta = null, $sede_id = null) {
         $sql = "
-            SELECT u.nombre_completo, r.nombre AS rol, COUNT(i.id) AS total_ingresos
+            SELECT u.nombre_completo, r.nombre AS rol, COUNT(i.id) AS total_ingresos,
+                   COALESCE(s.nombre_sede, 'Sede Principal') AS nombre_sede
             FROM usuarios u
             JOIN roles r ON u.rol_id = r.id
+            LEFT JOIN sedes s ON u.sede_id = s.id
             LEFT JOIN ingresos i ON i.orientador_id = u.id
         ";
         $params = [];
+        $where = [];
 
-        if (!empty($fecha_desde) || !empty($fecha_hasta)) {
-            $sql .= " WHERE 1=1";
-            if (!empty($fecha_desde)) {
-                $sql .= " AND DATE(i.fecha_ingreso) >= :f_desde";
-                $params[':f_desde'] = $fecha_desde;
-            }
-            if (!empty($fecha_hasta)) {
-                $sql .= " AND DATE(i.fecha_ingreso) <= :f_hasta";
-                $params[':f_hasta'] = $fecha_hasta;
-            }
+        if (!empty($fecha_desde)) {
+            $where[] = "DATE(i.fecha_ingreso) >= :f_desde";
+            $params[':f_desde'] = $fecha_desde;
+        }
+        if (!empty($fecha_hasta)) {
+            $where[] = "DATE(i.fecha_ingreso) <= :f_hasta";
+            $params[':f_hasta'] = $fecha_hasta;
+        }
+        if (!empty($sede_id)) {
+            $where[] = "(i.sede_id = :sede_id OR u.sede_id = :sede_id)";
+            $params[':sede_id'] = $sede_id;
         }
 
-        $sql .= " GROUP BY u.id, u.nombre_completo, r.nombre ORDER BY total_ingresos DESC";
+        if (!empty($where)) {
+            $sql .= " WHERE " . implode(" AND ", $where);
+        }
+
+        $sql .= " GROUP BY u.id, u.nombre_completo, r.nombre, s.nombre_sede ORDER BY total_ingresos DESC";
         $stmt = $this->db->prepare($sql);
         $stmt->execute($params);
         return $stmt->fetchAll();
     }
 
-    public function getReportePorEPS($fecha_desde = null, $fecha_hasta = null) {
+    public function getReportePorEPS($fecha_desde = null, $fecha_hasta = null, $sede_id = null) {
         $sql = "
             SELECT p.eps_nombre, COUNT(i.id) AS total_pacientes
             FROM ingresos i
@@ -720,6 +859,10 @@ class Ingreso {
         if (!empty($fecha_hasta)) {
             $sql .= " AND DATE(i.fecha_ingreso) <= :f_hasta";
             $params[':f_hasta'] = $fecha_hasta;
+        }
+        if (!empty($sede_id)) {
+            $sql .= " AND i.sede_id = :sede_id";
+            $params[':sede_id'] = $sede_id;
         }
 
         $sql .= " GROUP BY p.eps_nombre ORDER BY total_pacientes DESC";
@@ -753,14 +896,24 @@ class Ingreso {
             SELECT p.*, i.*, i.id AS id,
                    u.nombre_completo AS orientador_nombre,
                    l.user_id AS locked_by_user,
-                   u_lock.nombre_completo AS locked_by_nombre
+                   u_lock.nombre_completo AS locked_by_nombre,
+                   COALESCE(s.nombre_sede, 'Sede Principal') AS nombre_sede
             FROM ingresos i
             JOIN pacientes p ON i.paciente_id = p.id
             LEFT JOIN usuarios u ON i.orientador_id = u.id
             LEFT JOIN locks l ON l.record_id = i.id AND l.expires_at > NOW()
             LEFT JOIN usuarios u_lock ON l.user_id = u_lock.id
-            WHERE i.estado_tramite IN ('TRANSCRITO', 'TRANSCRITO_COMPLETO', 'EN_TRANSCRIPCION')
-            ORDER BY 
+            LEFT JOIN sedes s ON i.sede_id = s.id
+            WHERE i.estado_tramite IN ('TRANSCRITO', 'TRANSCRITO_COMPLETO')";
+
+        $params = [];
+        $active_sede = $_SESSION['active_sede_id'] ?? $_SESSION['sede_id'] ?? null;
+        if (!empty($active_sede)) {
+            $sql .= " AND (i.sede_id IS NULL OR i.sede_id = :sede_id)";
+            $params[':sede_id'] = $active_sede;
+        }
+
+        $sql .= " ORDER BY 
                 CASE WHEN i.prioridad = 'EMBARAZADA' THEN 1
                      WHEN i.prioridad = 'TERCERA_EDAD' THEN 2
                      WHEN i.prioridad = 'DISCAPACIDAD' THEN 3
@@ -769,11 +922,12 @@ class Ingreso {
                      ELSE 6 END,
                 i.fecha_ingreso ASC
         ";
-        $stmt = $this->db->query($sql);
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
         return $stmt->fetchAll();
     }
 
-    public function marcarVerificadoMonitor($id, $user_id, $estado_verificacion, $observaciones = '', $file_remplazo = null, $transcripcion_texto_nuevo = null) {
+    public function marcarVerificadoMonitor($id, $user_id, $estado_verificacion, $observaciones = '', $file_remplazo = null, $transcripcion_texto_nuevo = null, $contiene_mipres = null, $pdf_mipres_file = null) {
         $id = intval($id);
         $ingreso = $this->getById($id);
         if (!$ingreso) return false;
@@ -784,6 +938,8 @@ class Ingreso {
             "ALTER TABLE `ingresos` ADD COLUMN `fecha_verificacion` DATETIME NULL",
             "ALTER TABLE `ingresos` ADD COLUMN `observacion_verificacion` TEXT NULL",
             "ALTER TABLE `ingresos` ADD COLUMN `pdf_formula_final_url` VARCHAR(255) NULL",
+            "ALTER TABLE `ingresos` ADD COLUMN `pdf_mipres_url` VARCHAR(255) NULL",
+            "ALTER TABLE `ingresos` ADD COLUMN `contiene_mipres` ENUM('SI','NO') NULL",
             "ALTER TABLE `ingresos` ADD COLUMN `locked_by_user_id` INT NULL",
             "ALTER TABLE `ingresos` ADD COLUMN `locked_at` DATETIME NULL"
         ];
@@ -792,12 +948,12 @@ class Ingreso {
         }
 
         $pdf_url = $ingreso['pdf_transcripcion_url'];
+        $folder_name = $ingreso['numero_documento'] . '_' . date('dmy');
+        $rel_dir = 'assets/uploads/pacientes/' . $ingreso['tipo_documento'] . '_' . $ingreso['numero_documento'] . '/' . $folder_name . '/';
+        $full_dir = BASE_DIR . '/' . $rel_dir;
 
         if ($file_remplazo && isset($file_remplazo['tmp_name']) && is_uploaded_file($file_remplazo['tmp_name'])) {
             $ext = strtolower(pathinfo($file_remplazo['name'], PATHINFO_EXTENSION));
-            $folder_name = $ingreso['numero_documento'] . '_' . date('dmy');
-            $rel_dir = 'assets/uploads/pacientes/' . $ingreso['tipo_documento'] . '_' . $ingreso['numero_documento'] . '/' . $folder_name . '/';
-            $full_dir = BASE_DIR . '/' . $rel_dir;
 
             if (!file_exists($full_dir)) {
                 mkdir($full_dir, 0755, true);
@@ -811,15 +967,50 @@ class Ingreso {
             }
         }
 
+        // Subida y Registro de soporte MIPRES por el Monitor
+        $pdf_mipres_url = $ingreso['pdf_mipres_url'] ?? null;
+        if ($pdf_mipres_file && isset($pdf_mipres_file['tmp_name']) && is_uploaded_file($pdf_mipres_file['tmp_name'])) {
+            $ext_mip = strtolower(pathinfo($pdf_mipres_file['name'], PATHINFO_EXTENSION));
+            $rel_savia_dir = $rel_dir . 'soportes Savia/';
+            $full_savia_dir = BASE_DIR . '/' . $rel_savia_dir;
+            if (!file_exists($full_savia_dir)) {
+                mkdir($full_savia_dir, 0755, true);
+            }
+            $filename_mip = 'mipres_monitor_' . time() . '.' . $ext_mip;
+            $target_file_mip = $full_savia_dir . $filename_mip;
+
+            if (move_uploaded_file($pdf_mipres_file['tmp_name'], $target_file_mip)) {
+                $pdf_mipres_url = $rel_savia_dir . $filename_mip;
+                $contiene_mipres = 'SI';
+
+                // Registrar en ingreso_documentos para que sea visible e identificado en todos los históricos
+                try {
+                    $stmtDoc = $this->db->prepare("
+                        INSERT INTO ingreso_documentos (ingreso_id, tipo_documento, ruta_archivo, nombre_original) 
+                        VALUES (:iid, 'MIPRES', :ruta, :nombre_orig)
+                    ");
+                    $stmtDoc->execute([
+                        ':iid' => $id,
+                        ':ruta' => $pdf_mipres_url,
+                        ':nombre_orig' => $pdf_mipres_file['name'] ?? 'MIPRES_Monitor.pdf'
+                    ]);
+                } catch (Exception $e) {}
+            }
+        }
+
         $stmtMain = $this->db->prepare("
             UPDATE ingresos SET 
                 estado_tramite = 'VERIFICADO',
-                pdf_transcripcion_url = :pdf_url
+                pdf_transcripcion_url = :pdf_url,
+                pdf_mipres_url = COALESCE(:pdf_mipres, pdf_mipres_url),
+                contiene_mipres = COALESCE(:contiene_mipres, contiene_mipres)
             WHERE id = :id
         ");
         $exitoMain = $stmtMain->execute([
-            ':pdf_url' => $pdf_url,
-            ':id'      => $id
+            ':pdf_url'         => $pdf_url,
+            ':pdf_mipres'      => $pdf_mipres_url,
+            ':contiene_mipres' => $contiene_mipres,
+            ':id'              => $id
         ]);
 
         try {
@@ -859,14 +1050,24 @@ class Ingreso {
             SELECT p.*, i.*, i.id AS id,
                    u.nombre_completo AS orientador_nombre,
                    l.user_id AS locked_by_user,
-                   u_lock.nombre_completo AS locked_by_nombre
+                   u_lock.nombre_completo AS locked_by_nombre,
+                   COALESCE(s.nombre_sede, 'Sede Principal') AS nombre_sede
             FROM ingresos i
             LEFT JOIN pacientes p ON i.paciente_id = p.id
             LEFT JOIN usuarios u ON i.orientador_id = u.id
             LEFT JOIN locks l ON l.record_id = i.id AND l.expires_at > NOW()
             LEFT JOIN usuarios u_lock ON l.user_id = u_lock.id
-            WHERE i.estado_tramite IN ('VERIFICADO', 'VERIFICADA')
-            ORDER BY 
+            LEFT JOIN sedes s ON i.sede_id = s.id
+            WHERE i.estado_tramite IN ('VERIFICADO', 'VERIFICADA')";
+
+        $params = [];
+        $active_sede = $_SESSION['active_sede_id'] ?? $_SESSION['sede_id'] ?? null;
+        if (!empty($active_sede)) {
+            $sql .= " AND (i.sede_id IS NULL OR i.sede_id = :sede_id)";
+            $params[':sede_id'] = $active_sede;
+        }
+
+        $sql .= " ORDER BY 
                 CASE WHEN i.prioridad = 'EMBARAZADA' THEN 1
                      WHEN i.prioridad = 'TERCERA_EDAD' THEN 2
                      WHEN i.prioridad = 'DISCAPACIDAD' THEN 3
@@ -875,7 +1076,8 @@ class Ingreso {
                      ELSE 6 END,
                 i.fecha_ingreso ASC
         ";
-        $stmt = $this->db->query($sql);
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
         return $stmt->fetchAll();
     }
 
@@ -903,17 +1105,12 @@ class Ingreso {
             }
         }
 
-        // Asignar módulo de entrega si no tiene uno asignado
-        $modulo_entrega = $ingreso['modulo_entrega_asignado'] ?? '';
-        if (empty($modulo_entrega) || strtoupper(trim($modulo_entrega)) === 'AUTO') {
-            $bal = $this->obtenerModuloEquitativo();
-            $modulo_entrega = $bal['modulo'] ?? 'Ventanilla 1';
-        }
-
+        // Al imprimir y aprobar en supervisión de alistamiento, el registro pasa a ESPERA_ENTREGA
+        // El módulo se asignará únicamente cuando el entregador tome el paquete físico y lo llame en su ventanilla.
         $stmt = $this->db->prepare("
             UPDATE ingresos SET 
-                estado_tramite = 'ALISTADO',
-                modulo_entrega_asignado = :modulo,
+                estado_tramite = 'ESPERA_ENTREGA',
+                modulo_entrega_asignado = NULL,
                 alistado_por_user_id = :user_id,
                 fecha_alistado = NOW(),
                 pdf_alistamiento = :pdf_alist,
@@ -923,7 +1120,6 @@ class Ingreso {
             WHERE id = :id
         ");
         $res = $stmt->execute([
-            ':modulo'    => $modulo_entrega,
             ':user_id'   => $user_id,
             ':pdf_alist' => $pdf_alist_url,
             ':faltantes' => $faltantes ?: $ingreso['faltantes_alistamiento'],
@@ -933,20 +1129,140 @@ class Ingreso {
         return $res;
     }
 
+    /**
+     * Búsqueda ágil de órdenes en espera o en curso de entrega por Cédula o Tiquete.
+     */
+    public function buscarParaEntrega($termino, $sede_id = null) {
+        $termino = trim($termino);
+        if (empty($termino)) return [];
+
+        $sql = "
+            SELECT i.*, p.tipo_documento, p.numero_documento, p.nombres, p.apellidos, p.eps_nombre, p.telefono,
+                   p.ciudad_residencia, p.direccion_residencia,
+                   u.nombre_completo AS orientador_nombre,
+                   ua.nombre_completo AS alistador_nombre,
+                   COALESCE(s.nombre_sede, 'Sede Principal') AS nombre_sede
+            FROM ingresos i
+            JOIN pacientes p ON i.paciente_id = p.id
+            LEFT JOIN usuarios u ON i.orientador_id = u.id
+            LEFT JOIN usuarios ua ON i.alistado_por_user_id = ua.id
+            LEFT JOIN sedes s ON i.sede_id = s.id
+            WHERE (TRIM(i.ticket_numero) = :termExacto 
+                   OR i.ticket_numero LIKE :termLike 
+                   OR TRIM(p.numero_documento) = :termDoc 
+                   OR p.numero_documento LIKE :termDocLike
+                   OR p.nombres LIKE :termNombreLike
+                   OR p.apellidos LIKE :termApellidoLike
+                   OR CONCAT(p.nombres, ' ', p.apellidos) LIKE :termNombreCompLike)
+              AND i.estado_tramite NOT IN ('CANCELADO')
+              AND (DATE(i.created_at) = CURDATE() OR DATE(i.fecha_ingreso) = CURDATE())
+        ";
+        $params = [
+            ':termExacto'         => $termino,
+            ':termLike'           => '%' . $termino . '%',
+            ':termDoc'            => $termino,
+            ':termDocLike'        => '%' . $termino . '%',
+            ':termNombreLike'     => '%' . $termino . '%',
+            ':termApellidoLike'   => '%' . $termino . '%',
+            ':termNombreCompLike' => '%' . $termino . '%'
+        ];
+
+        if (!empty($sede_id)) {
+            $sql .= " AND (i.sede_id IS NULL OR i.sede_id = 0 OR i.sede_id = :sede_id)";
+            $params[':sede_id'] = $sede_id;
+        }
+
+        $sql .= " ORDER BY i.id DESC LIMIT 10";
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
+        $resultados = $stmt->fetchAll();
+
+        foreach ($resultados as &$ingreso) {
+            $stmtDocs = $this->db->prepare("SELECT * FROM ingreso_documentos WHERE ingreso_id = :id");
+            $stmtDocs->execute([':id' => $ingreso['id']]);
+            $ingreso['documentos'] = $stmtDocs->fetchAll();
+        }
+        unset($ingreso);
+
+        return $resultados;
+    }
+
+    /**
+     * Activa el llamado a Turnero 2 y asocia el módulo del entregador.
+     */
+    public function iniciarLlamadoEntrega($ingreso_id, $modulo_nombre, $user_id) {
+        $stmt = $this->db->prepare("
+            UPDATE ingresos SET 
+                estado_tramite = 'EN_ENTREGA',
+                modulo_entrega_asignado = :modulo,
+                locked_by_user_id = :user_id,
+                locked_at = NOW(),
+                updated_at = NOW()
+            WHERE id = :id
+        ");
+        $res = $stmt->execute([
+            ':modulo'  => $modulo_nombre ?: 'MÓDULO DE ENTREGA',
+            ':user_id' => $user_id,
+            ':id'      => $ingreso_id
+        ]);
+        if ($res) {
+            registrar_log_auditoria('ENTREGA', 'LLAMAR_A_MODULO', $ingreso_id, "Paciente llamado al {$modulo_nombre} para entrega de medicamentos.");
+        }
+        return $res;
+    }
+
+    /**
+     * Obtiene el listado de las últimas entregas completadas hoy en esta ventanilla o sede.
+     */
+    public function getUltimasEntregasHoy($sede_id = null, $modulo_filtro = null, $limit = 10) {
+        $sql = "
+            SELECT i.*, p.tipo_documento, p.numero_documento, p.nombres, p.apellidos, p.eps_nombre,
+                   u.nombre_completo AS entregador_nombre,
+                   COALESCE(s.nombre_sede, 'Sede Principal') AS nombre_sede
+            FROM ingresos i
+            JOIN pacientes p ON i.paciente_id = p.id
+            LEFT JOIN usuarios u ON i.locked_by_user_id = u.id
+            LEFT JOIN sedes s ON i.sede_id = s.id
+            WHERE i.estado_tramite = 'ENTREGADO' AND DATE(i.updated_at) = CURDATE()
+        ";
+        $params = [];
+        if ($sede_id) {
+            $sql .= " AND (i.sede_id IS NULL OR i.sede_id = :sede_id)";
+            $params[':sede_id'] = $sede_id;
+        }
+        if (!empty($modulo_filtro) && $modulo_filtro !== 'TODOS') {
+            $sql .= " AND i.modulo_entrega_asignado = :mod";
+            $params[':mod'] = $modulo_filtro;
+        }
+        $sql .= " ORDER BY i.updated_at DESC LIMIT " . intval($limit);
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
+        return $stmt->fetchAll();
+    }
+
     public function getIngresosParaEntrega() {
         $this->asegurarTablaLocks();
         $sql = "
             SELECT p.*, i.*, i.id AS id,
                    u.nombre_completo AS orientador_nombre,
                    l.user_id AS locked_by_user,
-                   u_lock.nombre_completo AS locked_by_nombre
+                   u_lock.nombre_completo AS locked_by_nombre,
+                   COALESCE(s.nombre_sede, 'Sede Principal') AS nombre_sede
             FROM ingresos i
             JOIN pacientes p ON i.paciente_id = p.id
             LEFT JOIN usuarios u ON i.orientador_id = u.id
             LEFT JOIN locks l ON l.record_id = i.id AND l.expires_at > NOW()
             LEFT JOIN usuarios u_lock ON l.user_id = u_lock.id
-            WHERE i.estado_tramite IN ('ALISTADO', 'GESTIONADO')
-            ORDER BY i.fecha_ingreso ASC
+            LEFT JOIN sedes s ON i.sede_id = s.id
+            WHERE i.estado_tramite IN ('ALISTADO', 'EN_ENTREGA')
+            ORDER BY 
+                CASE WHEN i.prioridad = 'EMBARAZADA' THEN 1
+                     WHEN i.prioridad = 'TERCERA_EDAD' THEN 2
+                     WHEN i.prioridad = 'DISCAPACIDAD' THEN 3
+                     WHEN i.prioridad = 'NIÑO_LACTANTE' THEN 4
+                     WHEN i.prioridad = 'OTRO_PREFERENCIAL' THEN 5
+                     ELSE 6 END,
+                i.fecha_ingreso ASC
         ";
         $stmt = $this->db->query($sql);
         return $stmt->fetchAll();
@@ -1095,11 +1411,13 @@ class Ingreso {
         $sql = "
             SELECT i.*, p.tipo_documento, p.numero_documento, p.nombres, p.apellidos, p.eps_nombre,
                    u.nombre_completo AS orientador_nombre,
-                   u_alist.nombre_completo AS alistador_nombre
+                   u_alist.nombre_completo AS alistador_nombre,
+                   COALESCE(s.nombre_sede, 'Sede Principal') AS nombre_sede
             FROM ingresos i
             JOIN pacientes p ON i.paciente_id = p.id
             LEFT JOIN usuarios u ON i.orientador_id = u.id
             LEFT JOIN usuarios u_alist ON i.alistado_por_user_id = u_alist.id
+            LEFT JOIN sedes s ON i.sede_id = s.id
             WHERE 1=1
         ";
 

@@ -14,6 +14,11 @@ $transcripcionList = $ingresoModel->getListaTranscripcion();
 $alistamientoList = $ingresoModel->getListaAlistamiento();
 $entregaList = $ingresoModel->getListaEntrega();
 
+if (!empty($_SESSION['error_acceso'])) {
+    $error = $_SESSION['error_acceso'];
+    unset($_SESSION['error_acceso']);
+}
+
 require_once __DIR__ . '/layouts/header.php';
 ?>
 

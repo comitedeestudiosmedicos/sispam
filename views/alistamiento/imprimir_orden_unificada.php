@@ -15,6 +15,8 @@ $config  = $empresaModel->getConfig();
 if (!$ingreso) {
     die("Registro de ingreso u orden no encontrado.");
 }
+
+$nombre_sede = $ingreso['nombre_sede'] ?? ($ingreso['sede_nombre'] ?? 'Sede Principal');
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -114,11 +116,12 @@ if (!$ingreso) {
             <div class="row align-items-center">
                 <div class="col-md-3 text-center text-md-start mb-2 mb-md-0">
                     <?php if (!empty($config['logo_url']) && file_exists(BASE_DIR . '/' . $config['logo_url'])): ?>
-                        <img src="<?= $config['logo_url'] ?>" alt="Logo" style="max-height: 55px;">
+                        <img src="<?= $config['logo_url'] ?>" alt="Logo" style="max-height: 50px;">
                     <?php else: ?>
                         <i class="fa-solid fa-prescription-bottle-medical fs-2 text-primary"></i>
                     <?php endif; ?>
                     <div class="fw-bold small mt-1"><?= htmlspecialchars($config['razon_social']) ?></div>
+                    <div class="small fw-semibold text-primary"><i class="fa-solid fa-location-dot text-warning me-1"></i> <?= htmlspecialchars($nombre_sede) ?></div>
                 </div>
 
                 <div class="col-md-5 text-center text-md-start mb-2 mb-md-0 border-start border-end px-3">
@@ -127,6 +130,9 @@ if (!$ingreso) {
                     <div class="small text-secondary">
                         <?= htmlspecialchars($ingreso['tipo_documento'] . ' ' . $ingreso['numero_documento']) ?> | 
                         <strong>EPS:</strong> <?= htmlspecialchars($ingreso['eps_nombre']) ?>
+                    </div>
+                    <div class="small text-dark mt-1">
+                        <strong>SEDE:</strong> <span class="badge bg-light text-dark border"><i class="fa-solid fa-location-dot text-warning me-1"></i> <?= htmlspecialchars($nombre_sede) ?></span>
                     </div>
                     <div class="mt-1">
                         <?= get_prioridad_badge($ingreso['prioridad'] ?? 'NORMAL') ?>
@@ -137,6 +143,7 @@ if (!$ingreso) {
                 <div class="col-md-4 text-center">
                     <small class="text-muted d-block font-monospace fw-bold mb-1">TIQUETE DE ATENCIÓN</small>
                     <div class="ticket-number-badge"><?= htmlspecialchars($ingreso['ticket_numero']) ?></div>
+                    <div class="small fw-bold text-secondary mt-1"><i class="fa-solid fa-location-dot text-warning me-1"></i> <?= htmlspecialchars($nombre_sede) ?></div>
                 </div>
             </div>
         </div>

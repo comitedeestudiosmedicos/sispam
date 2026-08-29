@@ -146,11 +146,17 @@ class Paciente {
         }
     }
 
-        /**
+    /**
      * Actualiza únicamente el ID de Qrystalos después de una sincronización exitosa
+     * Crea la columna qrystalos_consecutivo si no existe (lógica defensiva)
+     * 
+     * @param string $tipo_doc Tipo de documento (CC, TI, etc.)
+     * @param string $num_doc Número de documento
+     * @param string $consecutivo IDAFILIADO devuelto por Qrystalos
+     * @return bool true si se actualizó correctamente
      */
     public function actualizarQrystalosId($tipo_doc, $num_doc, $consecutivo) {
-        // Verificar si la columna existe, si no, crearla (siguiendo la lógica de tu modelo)
+        // Verificar si la columna existe, si no, crearla
         $stmtCols = $this->db->query("SHOW COLUMNS FROM pacientes LIKE 'qrystalos_consecutivo'");
         if ($stmtCols->rowCount() == 0) {
             try {
@@ -169,4 +175,3 @@ class Paciente {
         ]);
     }
 }
-

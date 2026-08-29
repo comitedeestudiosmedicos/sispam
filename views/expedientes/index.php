@@ -1,6 +1,6 @@
 <?php
 require_once __DIR__ . '/../../config/app.php';
-check_auth();
+check_role('expedientes');
 
 require_once __DIR__ . '/../../models/Ingreso.php';
 
@@ -88,12 +88,12 @@ require_once __DIR__ . '/../layouts/header.php';
             <form method="GET" action="" class="row g-2 align-items-center">
                 <input type="hidden" name="page" value="expedientes">
                 <div class="col-md-6 col-lg-5">
-                    <label class="form-label small fw-bold text-muted mb-1">Buscar por Documento de Identidad:</label>
+                    <label class="form-label small fw-bold text-muted mb-1">Buscar por Cédula, Tiquete o Nombre:</label>
                     <div class="input-group">
-                        <span class="input-group-text bg-light border-end-0"><i class="fa-solid fa-id-card text-primary"></i></span>
-                        <input type="text" name="num_doc" class="form-control bg-light border-start-0 ps-0" placeholder="Ej: 1036780004" value="<?= htmlspecialchars($num_doc) ?>" required autofocus>
+                        <span class="input-group-text bg-light border-end-0"><i class="fa-solid fa-magnifying-glass text-primary"></i></span>
+                        <input type="text" name="num_doc" class="form-control bg-light border-start-0 ps-0" placeholder="Ej: 1036780004 o TK-260828-0003" value="<?= htmlspecialchars($num_doc) ?>" required autofocus>
                         <button type="submit" class="btn btn-primary px-4 fw-bold shadow-sm">
-                            <i class="fa-solid fa-magnifying-glass me-1"></i> Consultar
+                            <i class="fa-solid fa-search me-1"></i> Consultar
                         </button>
                     </div>
                 </div>
@@ -283,8 +283,14 @@ require_once __DIR__ . '/../layouts/header.php';
 
                                     <!-- Orientador / Sede -->
                                     <td>
-                                        <div class="fw-semibold text-dark"><i class="fa-solid fa-user-tie text-secondary me-1"></i> <?= htmlspecialchars($ing['orientador_nombre'] ?? 'No registrado') ?></div>
-                                        <small class="text-muted"><?= htmlspecialchars($ing['modulo_entrega_asignado'] ?? 'Ventanilla General') ?></small>
+                                        <div class="fw-semibold text-dark mb-1">
+                                            <i class="fa-solid fa-user-tie text-secondary me-1"></i> <?= htmlspecialchars($ing['orientador_nombre'] ?? 'No registrado') ?>
+                                        </div>
+                                        <div>
+                                            <span class="badge bg-light text-dark border">
+                                                <i class="fa-solid fa-location-dot text-warning me-1"></i> <?= htmlspecialchars($ing['nombre_sede'] ?? ($detalles['nombre_sede'] ?? 'Sede Principal')) ?>
+                                            </span>
+                                        </div>
                                     </td>
 
                                     <!-- Novedad / Faltantes -->

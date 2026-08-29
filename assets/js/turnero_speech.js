@@ -105,7 +105,7 @@ class TurneroSpeech {
         return limpio;
     }
 
-    speak(nombrePaciente, modulo) {
+    speak(nombrePaciente, modulo = '') {
         // 1. Reproducir el timbre Ding-Dong
         this.playChime();
 
@@ -113,10 +113,15 @@ class TurneroSpeech {
 
         // Normalizar paciente y módulo a minúsculas y fonética adaptada
         const pacienteNom = this.normalizarTextoParaVoz(nombrePaciente);
-        const moduloNom = this.normalizarTextoParaVoz(modulo);
+        let moduloNom = this.normalizarTextoParaVoz(modulo);
 
         // Formatear la frase de llamado
-        const text = `Atención. Paciente ${pacienteNom}, favor pasar a ${moduloNom}`;
+        let text = '';
+        if (moduloNom && !moduloNom.includes('sin modulo') && !moduloNom.includes('n a') && !moduloNom.includes('null') && !moduloNom.includes('entrega') && moduloNom !== '--') {
+            text = `Atención. Paciente ${pacienteNom}, favor pasar a ${moduloNom}`;
+        } else {
+            text = `Atención. Paciente ${pacienteNom}, favor acercarse para la entrega de sus medicamentos`;
+        }
 
         // Cancelar avisos anteriores en cola
         this.synth.cancel();

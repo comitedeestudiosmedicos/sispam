@@ -14,6 +14,10 @@ if (!$ingreso) {
     die("Registro de alistamiento no encontrado.");
 }
 
+$nombre_sede = $ingreso['nombre_sede'] ?? ($ingreso['sede_nombre'] ?? 'Sede Principal');
+$dir_sede = !empty($ingreso['sede_direccion']) ? $ingreso['sede_direccion'] : ($config['direccion'] ?? '');
+$tel_sede = !empty($ingreso['sede_telefono']) ? $ingreso['sede_telefono'] : ($config['telefono'] ?? '');
+
 function limpiarAccentosTicket($string) {
     if (empty($string)) return '';
     return strtr($string, [
@@ -34,6 +38,7 @@ if (isset($_GET['rawbt']) && $_GET['rawbt'] == '1') {
     <center>
     <h3><?= htmlspecialchars(limpiarAccentosTicket($config['razon_social'])) ?></h3>
     NIT: <?= htmlspecialchars($config['nit']) ?><br>
+    <b>SEDE: <?= htmlspecialchars(limpiarAccentosTicket($nombre_sede)) ?></b><br>
     --------------------------------<br>
     <b>TIQUETE DE ALISTAMIENTO</b><br>
     <h2><?= htmlspecialchars($ingreso['ticket_numero']) ?></h2>
@@ -43,6 +48,7 @@ if (isset($_GET['rawbt']) && $_GET['rawbt'] == '1') {
     <b>Paciente:</b> <?= htmlspecialchars(limpiarAccentosTicket($ingreso['nombres'] . ' ' . $ingreso['apellidos'])) ?><br>
     <b>Documento:</b> <?= htmlspecialchars($ingreso['tipo_documento'] . ' ' . $ingreso['numero_documento']) ?><br>
     <b>EPS:</b> <?= htmlspecialchars(limpiarAccentosTicket($ingreso['eps_nombre'])) ?><br>
+    <b>Sede:</b> <?= htmlspecialchars(limpiarAccentosTicket($nombre_sede)) ?><br>
     <b>Estado:</b> EN ALISTAMIENTO<br>
     --------------------------------<br>
     <center>
@@ -133,7 +139,8 @@ $rawbt_direct_uri = "rawbt:" . base64_encode($clean_host_url);
     <div class="text-center">
         <div class="text-bold"><?= htmlspecialchars($config['razon_social']) ?></div>
         <div>NIT: <?= htmlspecialchars($config['nit']) ?></div>
-        <div><?= htmlspecialchars($ingreso['sede_nombre'] ?? 'SEDE PRINCIPAL') ?></div>
+        <div class="text-bold" style="font-size: 13px; margin: 3px 0;">SEDE: <?= htmlspecialchars($nombre_sede) ?></div>
+        <div><?= htmlspecialchars($dir_sede) ?></div>
     </div>
 
     <div class="divider"></div>
@@ -151,6 +158,7 @@ $rawbt_direct_uri = "rawbt:" . base64_encode($clean_host_url);
         <div class="text-bold"><?= htmlspecialchars($ingreso['nombres'] . ' ' . $ingreso['apellidos']) ?></div>
         <div><strong>DOC:</strong> <?= htmlspecialchars($ingreso['tipo_documento'] . ' ' . $ingreso['numero_documento']) ?></div>
         <div><strong>EPS:</strong> <?= htmlspecialchars($ingreso['eps_nombre']) ?></div>
+        <div><strong>SEDE:</strong> <?= htmlspecialchars($nombre_sede) ?></div>
     </div>
 
     <div class="divider"></div>
@@ -183,14 +191,16 @@ function imprimirRawBTTablet() {
         "--------------------------------\n" +
         "   <?= addslashes(htmlspecialchars(limpiarAccentosTicket($config['razon_social']))) ?>\n" +
         "   NIT: <?= addslashes(htmlspecialchars($config['nit'])) ?>\n" +
+        "   SEDE: <?= addslashes(htmlspecialchars(limpiarAccentosTicket($nombre_sede))) ?>\n" +
         "--------------------------------\n" +
         "     TIQUETE ALISTAMIENTO\n" +
         "         <?= addslashes(htmlspecialchars($ingreso['ticket_numero'])) ?>\n" +
         "--------------------------------\n" +
-        "Fecha: <?= date('d/m/Y H:i', strtotime($ingreso['fecha_ingreso'])) ?>\n" +
+        "Fecha: <?= date('d/m/Y h:i A', strtotime($ingreso['fecha_ingreso'])) ?>\n" +
         "Paciente: <?= addslashes(htmlspecialchars(limpiarAccentosTicket($ingreso['nombres'] . ' ' . $ingreso['apellidos']))) ?>\n" +
         "Documento: <?= addslashes(htmlspecialchars($ingreso['tipo_documento'] . ' ' . $ingreso['numero_documento'])) ?>\n" +
         "EPS: <?= addslashes(htmlspecialchars(limpiarAccentosTicket($ingreso['eps_nombre']))) ?>\n" +
+        "Sede: <?= addslashes(htmlspecialchars(limpiarAccentosTicket($nombre_sede))) ?>\n" +
         "Ventanilla: <?= addslashes(htmlspecialchars(limpiarAccentosTicket($ingreso['modulo_entrega_asignado'] ?? 'Ventanilla General'))) ?>\n" +
         "--------------------------------\n" +
         "SISPAM - Gestion Farmaceutica\n\n\n\n";
