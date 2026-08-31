@@ -1,9 +1,8 @@
-<?php
+    <?php
 require_once __DIR__ . '/../../config/app.php';
 check_role(['Administrador', 'empresa', 'usuarios']);
 
 require_once __DIR__ . '/../../models/Paciente.php';
-require_once __DIR__ . '/../../services/QrystalosSyncService.php';
 
 // Ajustar límites de PHP para permitir importación masiva de hasta 100.000+ registros
 @ini_set('memory_limit', '512M');
@@ -11,261 +10,9 @@ require_once __DIR__ . '/../../services/QrystalosSyncService.php';
 @set_time_limit(600);
 
 $pacienteModel = new Paciente();
-$qrystalosService = new QrystalosSyncService();
-
-/*
- * ================================================================
- * CONFIGURACIÓN DE INTEGRACIÓN CON QRYSTALOS
- * ================================================================
- * La integración queda preparada, pero DESACTIVADA por defecto
- * mientras se reciben las credenciales, URL, catálogos y demás
- * parámetros oficiales del onboarding de Qrystalos.
- *
- * Cuando la API esté lista, cambiar solamente:
- *     false  ->  true
- *
- * La importación local NO depende de Qrystalos: si la API está
- * deshabilitada o presenta un error, el paciente permanece guardado
- * en la BD local.
- */
-$qrystalosHabilitado = false;
-
 $mensaje = '';
 $error = '';
 $resumenImportacion = null;
-
-$qrystalosOk = 0;
-$qrystalosError = 0;
-$erroresQrystalos = [];
-
-/**
- * Importación compatible con la clase Paciente actual.
- *
- * El modelo existente utiliza createOrUpdate(), no importarLoteMasivo().
- * Se mantiene la interfaz de lotes del módulo para no romper el lector
- * XLSX/CSV optimizado. Cada registro se procesa mediante el método real
- * disponible en Paciente.
- */
-function importarLoteCompatible(array $lote, Paciente $pacienteModel): array {
-    $procesados = 0;
-    $omitidos = 0;
-
-    foreach ($lote as $fila) {
-        $tipoDoc = strtoupper(trim((string)($fila['tipo_documento'] ?? 'CC')));
-        $numDoc = preg_replace('/[^\dA-Za-z]/', '', trim((string)($fila['numero_documento'] ?? '')));
-
-        $primerNombre = trim((string)($fila['primer_nombre'] ?? ''));
-        $primerApellido = trim((string)($fila['primer_apellido'] ?? ''));
-
-        if ($numDoc === '' || $primerNombre === '' || $primerApellido === '') {
-            $omitidos++;
-            continue;
-        }
-
-        $segundoNombre = trim((string)($fila['segundo_nombre'] ?? ''));
-        $segundoApellido = trim((string)($fila['segundo_apellido'] ?? ''));
-        $fecha = trim((string)($fila['fecha_nacimiento'] ?? ''));
-
-        if ($fecha !== '') {
-            $timestamp = strtotime($fecha);
-            $fecha = $timestamp !== false ? date('Y-m-d', $timestamp) : null;
-        } else {
-            $fecha = null;
-        }
-
-        $sexo = trim((string)($fila['sexo'] ?? 'Masculino'));
-        if (!in_array($sexo, ['Masculino', 'Femenino', 'Indeterminado o Intersexual'], true)) {
-            $sexo = 'Masculino';
-        }
-
-        $celular = trim((string)($fila['numero_celular'] ?? ''));
-        $eps = trim((string)($fila['eps_nombre'] ?? '')) ?: 'Particular / Sin EPS';
-
-        $datosPaciente = [
-            'tipo_documento'        => $tipoDoc,
-            'numero_documento'      => $numDoc,
-            'primer_nombre'         => $primerNombre,
-            'segundo_nombre'        => $segundoNombre,
-            'primer_apellido'       => $primerApellido,
-            'segundo_apellido'      => $segundoApellido,
-            'nombres'               => trim($primerNombre . ' ' . $segundoNombre),
-            'apellidos'             => trim($primerApellido . ' ' . $segundoApellido),
-            'fecha_nacimiento'      => $fecha,
-            'sexo'                  => $sexo,
-            'estado_civil'          => trim((string)($fila['estado_civil'] ?? '')),
-            'grupo_sanguineo'       => trim((string)($fila['grupo_sanguineo'] ?? '')),
-            'grupo_etnico'          => trim((string)($fila['grupo_etnico'] ?? '')),
-            'tipo_discapacidad'     => trim((string)($fila['tipo_discapacidad'] ?? '')),
-            'tipo_escolaridad'      => trim((string)($fila['tipo_escolaridad'] ?? '')),
-            'ocupacion'             => trim((string)($fila['ocupacion'] ?? '')),
-            'eps_nombre'            => $eps,
-            'numero_celular'        => $celular,
-            'email'                 => trim((string)($fila['email'] ?? '')),
-            'direccion_residencia'  => trim((string)($fila['direccion_residencia'] ?? '')),
-            'ciudad_residencia'     => trim((string)($fila['ciudad_residencia'] ?? '')),
-            'barrio'                => trim((string)($fila['barrio'] ?? '')),
-            'zona'                  => trim((string)($fila['zona'] ?? '')),
-            'sede_atencion'         => trim((string)($fila['sede_atencion'] ?? '')),
-            'tipo_afiliado'         => trim((string)($fila['tipo_afiliado'] ?? '')),
-            'nivel_socioeconomico'  => trim((string)($fila['nivel_socioeconomico'] ?? '')),
-            'estrato_socioeconomico'=> trim((string)($fila['estrato_socioeconomico'] ?? '')),
-            'ips_primaria'          => trim((string)($fila['ips_primaria'] ?? '')),
-            'ips_remite'            => trim((string)($fila['ips_remite'] ?? '')),
-            'grupo_poblacional'     => trim((string)($fila['grupo_poblacional'] ?? '')),
-            'ciudad_expedicion'     => trim((string)($fila['ciudad_expedicion'] ?? '')),
-            'telefono'              => $celular
-        ];
-
-        try {
-            $pacienteModel->createOrUpdate($datosPaciente);
-            $procesados++;
-        } catch (Throwable $e) {
-            // Un registro defectuoso no debe detener toda la carga masiva.
-            $omitidos++;
-        }
-    }
-
-    return [
-        'procesados' => $procesados,
-        'omitidos'   => $omitidos
-    ];
-}
-
-/**
- * Sincroniza un lote ya guardado localmente con Qrystalos.
- *
- * Importante:
- * - La BD local siempre se procesa primero.
- * - La API es opcional y se puede activar/desactivar arriba.
- * - Se conserva el consecutivo Qrystalos para futuras actualizaciones.
- * - Un fallo de Qrystalos NO revierte la importación local.
- */
-function sincronizarLoteQrystalos(
-    array $lote,
-    Paciente $pacienteModel,
-    QrystalosSyncService $qrystalosService,
-    bool $qrystalosHabilitado,
-    int &$qrystalosOk,
-    int &$qrystalosError,
-    array &$erroresQrystalos
-): void {
-    if (!$qrystalosHabilitado) {
-        return;
-    }
-
-    foreach ($lote as $indice => $fila) {
-        $tipoDoc = strtoupper(trim((string)($fila['tipo_documento'] ?? 'CC')));
-        $numDoc = trim((string)($fila['numero_documento'] ?? ''));
-
-        if ($numDoc === '' || trim((string)($fila['primer_nombre'] ?? '')) === '') {
-            continue;
-        }
-
-        try {
-            // Recuperar el registro local ya insertado/actualizado y su
-            // consecutivo de Qrystalos, si ya existía.
-            $pacExistente = $pacienteModel->getByDocumento($tipoDoc, $numDoc);
-            $idQrystalosExistente = $pacExistente
-                ? ($pacExistente['qrystalos_consecutivo'] ?? null)
-                : null;
-
-            $primerNombre = trim((string)($fila['primer_nombre'] ?? ''));
-            $segundoNombre = trim((string)($fila['segundo_nombre'] ?? ''));
-            $primerApellido = trim((string)($fila['primer_apellido'] ?? ''));
-            $segundoApellido = trim((string)($fila['segundo_apellido'] ?? ''));
-
-            $fechaNacimiento = trim((string)($fila['fecha_nacimiento'] ?? ''));
-            if ($fechaNacimiento !== '') {
-                $timestamp = strtotime($fechaNacimiento);
-                $fechaNacimiento = $timestamp !== false
-                    ? date('Y-m-d', $timestamp)
-                    : null;
-            } else {
-                $fechaNacimiento = null;
-            }
-
-            $sexo = trim((string)($fila['sexo'] ?? 'Masculino'));
-            if (!in_array($sexo, ['Masculino', 'Femenino', 'Indeterminado o Intersexual'], true)) {
-                $sexo = 'Masculino';
-            }
-
-            /*
-             * Se envían al servicio los campos compatibles con la versión
-             * original de la integración, conservando además los datos
-             * disponibles en la plantilla ampliada.
-             */
-            $datosPaciente = [
-                'tipo_documento'       => $tipoDoc,
-                'numero_documento'     => $numDoc,
-                'primer_nombre'        => $primerNombre,
-                'segundo_nombre'       => $segundoNombre,
-                'primer_apellido'      => $primerApellido,
-                'segundo_apellido'     => $segundoApellido,
-                'nombres'              => trim($primerNombre . ' ' . $segundoNombre),
-                'apellidos'            => trim($primerApellido . ' ' . $segundoApellido),
-                'fecha_nacimiento'     => $fechaNacimiento,
-                'sexo'                 => $sexo,
-                'estado_civil'         => trim((string)($fila['estado_civil'] ?? '')),
-                'grupo_sanguineo'      => trim((string)($fila['grupo_sanguineo'] ?? '')),
-                'grupo_etnico'         => trim((string)($fila['grupo_etnico'] ?? '')),
-                'tipo_discapacidad'    => trim((string)($fila['tipo_discapacidad'] ?? '')),
-                'tipo_escolaridad'     => trim((string)($fila['tipo_escolaridad'] ?? '')),
-                'ocupacion'            => trim((string)($fila['ocupacion'] ?? '')),
-                'eps_nombre'           => trim((string)($fila['eps_nombre'] ?? '')) ?: 'Particular / Sin EPS',
-                'numero_celular'       => trim((string)($fila['numero_celular'] ?? '')),
-                'email'                => trim((string)($fila['email'] ?? '')),
-                'direccion_residencia' => trim((string)($fila['direccion_residencia'] ?? '')),
-                'ciudad_residencia'   => trim((string)($fila['ciudad_residencia'] ?? '')),
-                'barrio'               => trim((string)($fila['barrio'] ?? '')),
-                'zona'                 => trim((string)($fila['zona'] ?? '')),
-                'sede_atencion'        => trim((string)($fila['sede_atencion'] ?? '')),
-                'tipo_afiliado'        => trim((string)($fila['tipo_afiliado'] ?? '')),
-                'nivel_socioeconomico'=> trim((string)($fila['nivel_socioeconomico'] ?? '')),
-                'estrato_socioeconomico'=> trim((string)($fila['estrato_socioeconomico'] ?? '')),
-                'ips_primaria'         => trim((string)($fila['ips_primaria'] ?? '')),
-                'ips_remite'           => trim((string)($fila['ips_remite'] ?? '')),
-                'grupo_poblacional'    => trim((string)($fila['grupo_poblacional'] ?? '')),
-                'ciudad_expedicion'    => trim((string)($fila['ciudad_expedicion'] ?? '')),
-                'telefono'             => trim((string)($fila['numero_celular'] ?? ''))
-            ];
-
-            $resultadoQrystalos = $qrystalosService->sincronizarPaciente(
-                $datosPaciente,
-                $idQrystalosExistente
-            );
-
-            if (!empty($resultadoQrystalos['success'])) {
-                $qrystalosOk++;
-
-                if (!empty($resultadoQrystalos['consecutivo'])) {
-                    $pacienteModel->actualizarQrystalosId(
-                        $tipoDoc,
-                        $numDoc,
-                        $resultadoQrystalos['consecutivo']
-                    );
-                }
-            } else {
-                $qrystalosError++;
-
-                if (count($erroresQrystalos) < 5) {
-                    $detalle = $resultadoQrystalos['error'] ?? 'Respuesta no especificada de Qrystalos';
-                    $erroresQrystalos[] =
-                        'Registro ' . ($indice + 1) .
-                        ' (Doc: ' . $numDoc . '): ' . $detalle;
-                }
-            }
-        } catch (Throwable $e) {
-            $qrystalosError++;
-
-            if (count($erroresQrystalos) < 5) {
-                $erroresQrystalos[] =
-                    'Registro ' . ($indice + 1) .
-                    ' (Doc: ' . $numDoc . '): ' . $e->getMessage();
-            }
-        }
-    }
-}
-
 
 // ==========================================
 // 1. DESCARGA DIRECTA DE PLANTILLAS OFICIALES
@@ -472,31 +219,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['archivo_pacientes'])
         try {
             if ($ext === 'xlsx') {
                 // Procesar archivo Excel nativo (.xlsx)
-                NativeXlsxStreamReader::parse($file['tmp_name'], function($chunk) use (
-                    $pacienteModel,
-                    $qrystalosService,
-                    $qrystalosHabilitado,
-                    &$totalProcesados,
-                    &$totalOmitidos,
-                    &$qrystalosOk,
-                    &$qrystalosError,
-                    &$erroresQrystalos
-                ) {
-                    // PASO A: importar SIEMPRE a la BD local.
-                    $res = importarLoteCompatible($chunk, $pacienteModel);
+                NativeXlsxStreamReader::parse($file['tmp_name'], function($chunk) use ($pacienteModel, &$totalProcesados, &$totalOmitidos) {
+                    $res = $pacienteModel->importarLoteMasivo($chunk);
                     $totalProcesados += $res['procesados'];
                     $totalOmitidos   += $res['omitidos'];
-
-                    // PASO B: sincronizar con Qrystalos solamente si está habilitado.
-                    sincronizarLoteQrystalos(
-                        $chunk,
-                        $pacienteModel,
-                        $qrystalosService,
-                        $qrystalosHabilitado,
-                        $qrystalosOk,
-                        $qrystalosError,
-                        $erroresQrystalos
-                    );
                 }, 1000);
             } elseif ($ext === 'csv' || $ext === 'txt') {
                 // Procesar archivo CSV delimitado por comas o punto y coma
@@ -526,38 +252,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['archivo_pacientes'])
                         }
                         $batch[] = $assoc;
                         if (count($batch) >= 1000) {
-                            $res = importarLoteCompatible($batch, $pacienteModel);
+                            $res = $pacienteModel->importarLoteMasivo($batch);
                             $totalProcesados += $res['procesados'];
                             $totalOmitidos   += $res['omitidos'];
-
-                            // La sincronización externa nunca bloquea la BD local.
-                            sincronizarLoteQrystalos(
-                                $batch,
-                                $pacienteModel,
-                                $qrystalosService,
-                                $qrystalosHabilitado,
-                                $qrystalosOk,
-                                $qrystalosError,
-                                $erroresQrystalos
-                            );
-
                             $batch = [];
                         }
                     }
                     if (!empty($batch)) {
-                        $res = importarLoteCompatible($batch, $pacienteModel);
+                        $res = $pacienteModel->importarLoteMasivo($batch);
                         $totalProcesados += $res['procesados'];
                         $totalOmitidos   += $res['omitidos'];
-
-                        sincronizarLoteQrystalos(
-                            $batch,
-                            $pacienteModel,
-                            $qrystalosService,
-                            $qrystalosHabilitado,
-                            $qrystalosOk,
-                            $qrystalosError,
-                            $erroresQrystalos
-                        );
                     }
                     fclose($handle);
                 } else {
@@ -573,11 +277,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['archivo_pacientes'])
                 'procesados' => $totalProcesados,
                 'omitidos'   => $totalOmitidos,
                 'total'      => ($totalProcesados + $totalOmitidos),
-                'tiempo'     => $duration,
-                'qrystalos_habilitado' => $qrystalosHabilitado,
-                'qrystalos_ok' => $qrystalosOk,
-                'qrystalos_error' => $qrystalosError,
-                'errores_qrystalos' => $erroresQrystalos
+                'tiempo'     => $duration
             ];
 
         } catch (Exception $e) {
@@ -597,7 +297,7 @@ require_once __DIR__ . '/../layouts/header.php';
             <i class="fa-solid fa-file-excel text-success me-2"></i> Módulo de Carga Masiva de Pacientes
         </h4>
         <p class="text-muted small mb-0">
-            Importación y actualización masiva ultra-rápida (hasta 100.000+ registros). Soporta plantillas en formato <strong>Excel (.xlsx)</strong> y <strong>CSV UTF-8</strong>, con integración preparada para Qrystalos.
+            Importación y actualización masiva ultra-rápida (hasta 100.000+ registros). Soporta plantillas en formato <strong>Excel (.xlsx)</strong> y <strong>CSV UTF-8</strong>.
         </p>
     </div>
     <div class="col-md-5 text-md-end mt-3 mt-md-0">
@@ -663,73 +363,6 @@ require_once __DIR__ . '/../layouts/header.php';
                         <small class="text-dark fw-bold">Tiempo de Ejecución</small>
                     </div>
                 </div>
-            </div>
-        </div>
-    </div>
-<?php endif; ?>
-
-<?php if ($resumenImportacion): ?>
-    <div class="card card-glass border-0 shadow-sm mb-4">
-        <div class="card-body p-4">
-            <div class="d-flex justify-content-between align-items-center mb-3">
-                <h5 class="fw-bold text-primary mb-0">
-                    <i class="fa-solid fa-cloud-arrow-up me-2"></i>
-                    Integración con Qrystalos
-                </h5>
-                <?php if (!empty($resumenImportacion['qrystalos_habilitado'])): ?>
-                    <span class="badge bg-success">API HABILITADA</span>
-                <?php else: ?>
-                    <span class="badge bg-secondary">API EN ESPERA / DESACTIVADA</span>
-                <?php endif; ?>
-            </div>
-
-            <?php if (empty($resumenImportacion['qrystalos_habilitado'])): ?>
-                <div class="alert alert-info border-0 small mb-3">
-                    <i class="fa-solid fa-circle-info me-1"></i>
-                    La importación local se realizó normalmente. La sincronización con
-                    Qrystalos está preparada pero permanece desactivada hasta recibir
-                    la URL, credenciales, catálogos y parámetros oficiales del onboarding.
-                </div>
-            <?php else: ?>
-                <div class="row g-3 text-center">
-                    <div class="col-md-6">
-                        <div class="p-3 bg-success bg-opacity-10 border border-success border-opacity-25 rounded-3">
-                            <div class="fs-3 fw-bold text-success">
-                                <?= number_format($resumenImportacion['qrystalos_ok']) ?>
-                            </div>
-                            <small class="text-dark fw-bold">Sincronizados correctamente</small>
-                        </div>
-                    </div>
-                    <div class="col-md-6">
-                        <div class="p-3 bg-danger bg-opacity-10 border border-danger border-opacity-25 rounded-3">
-                            <div class="fs-3 fw-bold text-danger">
-                                <?= number_format($resumenImportacion['qrystalos_error']) ?>
-                            </div>
-                            <small class="text-dark fw-bold">Errores de sincronización</small>
-                        </div>
-                    </div>
-                </div>
-
-                <?php if (!empty($resumenImportacion['errores_qrystalos'])): ?>
-                    <div class="mt-3">
-                        <h6 class="text-danger fw-bold">
-                            <i class="fa-solid fa-triangle-exclamation me-1"></i>
-                            Primeros errores de Qrystalos
-                        </h6>
-                        <ul class="small text-danger mb-0">
-                            <?php foreach ($resumenImportacion['errores_qrystalos'] as $err): ?>
-                                <li><?= htmlspecialchars($err) ?></li>
-                            <?php endforeach; ?>
-                        </ul>
-                    </div>
-                <?php endif; ?>
-            <?php endif; ?>
-
-            <div class="small text-muted mt-3">
-                <strong>Modo de operación:</strong>
-                primero se guarda/actualiza el paciente en SISPAM y después se intenta
-                la sincronización externa. Un error de Qrystalos no elimina ni revierte
-                el registro local.
             </div>
         </div>
     </div>
@@ -805,7 +438,6 @@ require_once __DIR__ . '/../layouts/header.php';
                     <li><strong>Fecha de Nacimiento:</strong> Utilice formato estándar <code>YYYY-MM-DD</code> (ej: <code>1995-08-15</code>) o fecha nativa de Excel.</li>
                     <li><strong>Aseguradora / EPS:</strong> Si se deja vacío, el sistema asignará automáticamente <code>Particular / Sin EPS</code>.</li>
                     <li><strong>Sexo:</strong> <code>Masculino</code>, <code>Femenino</code> o <code>Indeterminado o Intersexual</code>.</li>
-                    <li><strong>Qrystalos:</strong> la integración está incorporada en el módulo, pero permanece desactivada hasta completar el onboarding y recibir los parámetros oficiales de la API.</li>
                 </ul>
             </div>
         </div>

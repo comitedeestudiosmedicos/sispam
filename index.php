@@ -1,30 +1,34 @@
 <?php
-
-//FORZAR MUESTRA DE ERRORES REALES (Temporal para diagnóstico)
-ini_set('display_errors', 1);
-ini_set('display_startup_errors', 1);
-error_reporting(E_ALL);
 /**
  * Front Controller & Router Principal SISPAM
  */
 
-require_once __DIR__ . '/vendor/autoload.php';
-$dotenv = Dotenv\Dotenv::createImmutable(__DIR__);
-$dotenv->load();
-
 require_once __DIR__ . '/config/app.php';
 require_once __DIR__ . '/models/Ingreso.php';
-require_once __DIR__ . '/config/database.php';
-
-//PRUEBA DE CONEXION A LA BASE DE DATOS
-
-try {
-    $db = Database::getConnection();
-} catch (Exception $e) {
-    die("<h1 style='color:red;'>Error en la configuración local: " . $e->getMessage() . "</h1>");
-}
 
 $page = $_GET['page'] ?? 'dashboard';
+
+// Manejo de cambio dinámico de Sede de trabajo para el usuario autenticado
+if (isset($_GET['cambiar_sede_id']) && isset($_SESSION['user_id'])) {
+    $nueva_sede_id = intval($_GET['cambiar_sede_id']);
+    require_once __DIR__ . '/models/Empresa.php';
+    $empModel = new Empresa();
+    $sedeInfo = $empModel->getSedeById($nueva_sede_id);
+    if ($sedeInfo) {
+        $_SESSION['active_sede_id'] = $sedeInfo['id'];
+        $_SESSION['active_sede_nombre'] = $sedeInfo['nombre_sede'];
+        $_SESSION['sede_id'] = $sedeInfo['id'];
+        $_SESSION['sede_nombre'] = $sedeInfo['nombre_sede'];
+        
+        registrar_log_auditoria('USUARIOS', 'CAMBIO_SEDE_ACTIVA', $sedeInfo['id'], "Usuario cambió su sede de trabajo activa a: {$sedeInfo['nombre_sede']}");
+    }
+    $redirect = $_SERVER['HTTP_REFERER'] ?? 'index.php?page=dashboard';
+    $redirect = preg_replace('/([?&])cambiar_sede_id=[^&]+(&|$)/', '$1', $redirect);
+    $redirect = rtrim($redirect, '?&');
+    if (empty($redirect)) $redirect = 'index.php?page=dashboard';
+    header("Location: " . $redirect);
+    exit;
+}
 
 // Manejo especial AJAX para obtener detalles de un ingreso en Transcripción
 if (isset($_GET['ajax_get_detail']) && $_GET['ajax_get_detail'] == '1') {
@@ -53,6 +57,7 @@ switch ($page) {
         break;
 
     case 'empresa':
+    case 'empresa_config':
         require_once __DIR__ . '/views/empresa/config.php';
         break;
 
@@ -62,6 +67,10 @@ switch ($page) {
 
     case 'auditoria':
         require_once __DIR__ . '/views/auditoria/index.php';
+        break;
+
+    case 'pacientes':
+        require_once __DIR__ . '/views/pacientes/index.php';
         break;
 
     case 'importar_pacientes':
@@ -127,6 +136,4 @@ switch ($page) {
     default:
         require_once __DIR__ . '/views/dashboard.php';
         break;
-
-        
 }

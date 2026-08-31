@@ -221,7 +221,7 @@ require_once __DIR__ . '/../../config/app.php';
                 <!-- 6. Configuración & Administración -->
                 <?php if ($can_config): ?>
                 <?php 
-                    $is_config_active = in_array($curr_page, ['empresa', 'usuarios', 'modulos', 'auditoria', 'importar_pacientes']);
+                    $is_config_active = in_array($curr_page, ['empresa', 'usuarios', 'modulos', 'auditoria', 'importar_pacientes', 'pacientes']);
                 ?>
                 <li class="nav-item dropdown">
                     <a class="sispam-nav-link dropdown-toggle <?= $is_config_active ? 'active' : '' ?>" href="#" id="dropConfig" role="button" data-bs-toggle="dropdown" aria-expanded="false">
@@ -230,6 +230,11 @@ require_once __DIR__ . '/../../config/app.php';
                     </a>
                     <ul class="dropdown-menu sispam-dropdown-menu mt-1" aria-labelledby="dropConfig" style="min-width: 240px;">
                         <?php if ($has_empresa): ?>
+                        <li>
+                            <a class="sispam-dropdown-item <?= $curr_page === 'pacientes' ? 'active' : '' ?>" href="index.php?page=pacientes">
+                                <i class="fa-solid fa-hospital-user me-2 text-primary"></i> Gestión de Pacientes
+                            </a>
+                        </li>
                         <li>
                             <a class="sispam-dropdown-item <?= $curr_page === 'empresa' ? 'active' : '' ?>" href="index.php?page=empresa">
                                 <i class="fa-solid fa-building me-2 text-primary"></i> Empresa & Sedes
