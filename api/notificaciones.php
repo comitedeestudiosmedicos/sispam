@@ -7,6 +7,8 @@ if (!isset($_SESSION['user_id'])) {
     echo json_encode([]);
     exit;
 }
+$userId = intval($_SESSION['user_id']);
+session_write_close();
 
 $notifModel = new Notificacion();
 
@@ -17,5 +19,5 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     exit;
 }
 
-$notificaciones = $notifModel->getSinLeerePorUsuario($_SESSION['user_id']);
+$notificaciones = $notifModel->getSinLeerePorUsuario($userId);
 echo json_encode($notificaciones);

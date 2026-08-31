@@ -154,21 +154,40 @@ $nombre_sede = $ingreso['nombre_sede'] ?? ($ingreso['sede_nombre'] ?? 'Sede Prin
                 <i class="fa-solid fa-file-medical text-primary me-2"></i> FÓRMULA MÉDICA TRANSCRITA PARA ALISTAMIENTO
             </h5>
 
-            <?php if (!empty($ingreso['pdf_transcripcion_url']) && file_exists(BASE_DIR . '/' . $ingreso['pdf_transcripcion_url'])): ?>
-                <?php 
-                    $extTrans = strtolower(pathinfo($ingreso['pdf_transcripcion_url'], PATHINFO_EXTENSION));
-                ?>
-                <?php if (in_array($extTrans, ['jpg', 'jpeg', 'png', 'webp', 'gif'])): ?>
-                    <div class="text-center my-3">
-                        <img src="<?= htmlspecialchars($ingreso['pdf_transcripcion_url']) ?>" class="img-fluid rounded border shadow-sm" style="max-width: 100%;">
+            <?php 
+                $archivosTrans = !empty($ingreso['transcripciones_archivos']) ? $ingreso['transcripciones_archivos'] : [];
+                if (empty($archivosTrans) && !empty($ingreso['pdf_transcripcion_url'])) {
+                    $archivosTrans = [['url' => $ingreso['pdf_transcripcion_url'], 'nombre' => 'Orden Transcrita']];
+                }
+            ?>
+
+            <?php if (!empty($archivosTrans)): ?>
+                <?php foreach ($archivosTrans as $idxTrans => $tFile): ?>
+                    <?php 
+                        $urlT = $tFile['url'];
+                        $extTrans = strtolower(pathinfo($urlT, PATHINFO_EXTENSION));
+                        $canvasId = 'pdf-transcripcion-canvas-' . $idxTrans;
+                    ?>
+                    <div class="mb-4">
+                        <?php if (count($archivosTrans) > 1): ?>
+                            <div class="badge bg-primary text-white mb-2 fs-6">
+                                <i class="fa-solid fa-file-pdf me-1"></i> <?= htmlspecialchars($tFile['nombre'] ?? ('Documento #' . ($idxTrans + 1))) ?>
+                            </div>
+                        <?php endif; ?>
+
+                        <?php if (in_array($extTrans, ['jpg', 'jpeg', 'png', 'webp', 'gif'])): ?>
+                            <div class="text-center my-3">
+                                <img src="<?= htmlspecialchars($urlT) ?>" class="img-fluid rounded border shadow-sm" style="max-width: 100%;">
+                            </div>
+                        <?php else: ?>
+                            <div id="<?= $canvasId ?>" class="pdf-canvas-container text-center my-3" data-pdf-url="<?= htmlspecialchars($urlT) ?>">
+                                <div class="spinner-border text-primary my-4" role="status">
+                                    <span class="visually-hidden">Cargando páginas de la fórmula transcrita...</span>
+                                </div>
+                            </div>
+                        <?php endif; ?>
                     </div>
-                <?php else: ?>
-                    <div id="pdf-transcripcion-canvas-list" class="text-center my-3">
-                        <div class="spinner-border text-primary my-4" role="status">
-                            <span class="visually-hidden">Cargando páginas de la fórmula transcrita...</span>
-                        </div>
-                    </div>
-                <?php endif; ?>
+                <?php endforeach; ?>
             <?php elseif (!empty($ingreso['transcripcion_texto'])): ?>
                 <div class="p-3 bg-light rounded border font-monospace text-dark" style="white-space: pre-wrap;">
                     <?= htmlspecialchars($ingreso['transcripcion_texto']) ?>
@@ -188,11 +207,11 @@ document.addEventListener('DOMContentLoaded', function() {
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
     function renderizarPdfCompleto(pdfUrl, containerId) {
-        if (!pdfUrl) return;
+        if (!pdfUrl) return Promise.resolve();
         const container = document.getElementById(containerId);
-        if (!container) return;
+        if (!container) return Promise.resolve();
 
-        pdfjsLib.getDocument(pdfUrl).promise.then(function(pdf) {
+        return pdfjsLib.getDocument(pdfUrl).promise.then(function(pdf) {
             container.innerHTML = '';
             let renderPromises = [];
             for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
@@ -214,24 +233,32 @@ document.addEventListener('DOMContentLoaded', function() {
                     })
                 );
             }
-            Promise.all(renderPromises).then(() => {
-                <?php if (isset($_GET['auto_print']) && $_GET['auto_print'] == '1'): ?>
-                    setTimeout(() => { window.print(); }, 600);
-                <?php endif; ?>
-            });
+            return Promise.all(renderPromises);
         }).catch(function(err) {
             console.error("Error al renderizar PDF:", err);
             container.innerHTML = `<div class="alert alert-warning">No se pudo cargar la vista previa del PDF. <a href="${pdfUrl}" target="_blank">Abrir PDF original</a></div>`;
         });
     }
 
-    <?php if (!empty($ingreso['pdf_transcripcion_url']) && file_exists(BASE_DIR . '/' . $ingreso['pdf_transcripcion_url']) && strtolower(pathinfo($ingreso['pdf_transcripcion_url'], PATHINFO_EXTENSION)) === 'pdf'): ?>
-        renderizarPdfCompleto('<?= $ingreso['pdf_transcripcion_url'] ?>', 'pdf-transcripcion-canvas-list');
-    <?php else: ?>
+    const containers = document.querySelectorAll('.pdf-canvas-container');
+    if (containers.length > 0) {
+        let promises = [];
+        containers.forEach(cont => {
+            const pdfUrl = cont.getAttribute('data-pdf-url');
+            if (pdfUrl) {
+                promises.push(renderizarPdfCompleto(pdfUrl, cont.id));
+            }
+        });
+        Promise.all(promises).then(() => {
+            <?php if (isset($_GET['auto_print']) && $_GET['auto_print'] == '1'): ?>
+                setTimeout(() => { window.print(); }, 600);
+            <?php endif; ?>
+        });
+    } else {
         <?php if (isset($_GET['auto_print']) && $_GET['auto_print'] == '1'): ?>
             setTimeout(() => { window.print(); }, 500);
         <?php endif; ?>
-    <?php endif; ?>
+    }
 });
 </script>
 

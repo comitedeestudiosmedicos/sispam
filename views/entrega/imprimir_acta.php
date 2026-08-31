@@ -224,26 +224,36 @@ if (!empty($faltantesDetalle)) {
             </div>
         </div>
 
-        <!-- ANEXO 1: PDF DE TRANSCRIPCIÓN DE ORDEN MÉDICA -->
-        <?php if (!empty($ingreso['pdf_transcripcion_url']) && file_exists(BASE_DIR . '/' . $ingreso['pdf_transcripcion_url'])): ?>
-        <div class="pdf-embed-container mt-5 border-top pt-4">
-            <h5 class="fw-bold text-primary mb-3">
-                <i class="fa-solid fa-file-pdf text-danger me-2"></i> ANEXO 1: ORDEN MÉDICA TRANSCRITA EN FORMATO PDF
-            </h5>
+        <!-- ANEXO 1: PDF(S) DE TRANSCRIPCIÓN DE ORDEN MÉDICA -->
+        <?php 
+            $archivosTransActa = !empty($ingreso['transcripciones_archivos']) ? $ingreso['transcripciones_archivos'] : [];
+            if (empty($archivosTransActa) && !empty($ingreso['pdf_transcripcion_url'])) {
+                $archivosTransActa = [['url' => $ingreso['pdf_transcripcion_url'], 'nombre' => 'Orden Médica Transcrita']];
+            }
+        ?>
+        <?php if (!empty($archivosTransActa)): ?>
+            <?php foreach ($archivosTransActa as $idxT => $tDoc): ?>
+                <?php if (file_exists(BASE_DIR . '/' . $tDoc['url'])): ?>
+                <div class="pdf-embed-container mt-5 border-top pt-4">
+                    <h5 class="fw-bold text-primary mb-3">
+                        <i class="fa-solid fa-file-pdf text-danger me-2"></i> ANEXO 1<?= count($archivosTransActa) > 1 ? '.' . ($idxT + 1) : '' ?>: <?= htmlspecialchars($tDoc['nombre'] ?? 'ORDEN MÉDICA TRANSCRITA') ?>
+                    </h5>
 
-            <div id="pdf-transcripcion-canvas-list" class="text-center my-3">
-                <div class="spinner-border text-primary my-4" role="status">
-                    <span class="visually-hidden">Cargando páginas de transcripción...</span>
+                    <div id="pdf-transcripcion-canvas-<?= $idxT ?>" class="pdf-acta-trans-canvas text-center my-3" data-pdf-url="<?= htmlspecialchars($tDoc['url']) ?>">
+                        <div class="spinner-border text-primary my-4" role="status">
+                            <span class="visually-hidden">Cargando páginas de transcripción...</span>
+                        </div>
+                    </div>
                 </div>
-            </div>
-        </div>
+                <?php endif; ?>
+            <?php endforeach; ?>
         <?php endif; ?>
 
         <!-- ANEXO 2: PDF DE ALISTAMIENTO DE FARMACIA -->
         <?php if (!empty($ingreso['pdf_alistamiento']) && file_exists(BASE_DIR . '/' . $ingreso['pdf_alistamiento'])): ?>
         <div class="pdf-embed-container mt-5 border-top pt-4">
             <h5 class="fw-bold text-success mb-3">
-                <i class="fa-solid fa-boxes-packing text-success me-2"></i> ANEXO 2: COMPROBANTE DE EMPAQUE / ALISTAMIENTO PDF
+                <i class="fa-solid fa-file-shield text-success me-2"></i> ANEXO 2: COMPROBANTE DE ALISTAMIENTO
             </h5>
 
             <div id="pdf-alistamiento-canvas-list" class="text-center my-3">
@@ -254,30 +264,20 @@ if (!empty($faltantesDetalle)) {
         </div>
         <?php endif; ?>
 
-        <!-- ANEXO 3: FÓRMULA FINAL / FACTURA DE TERCEROS (SUBIDO EN ENTREGA Y COMPARADO CON TRANSCRIPCIÓN) -->
-        <?php if (!empty($ingreso['pdf_formula_final_url']) && file_exists(BASE_DIR . '/' . $ingreso['pdf_formula_final_url'])): ?>
-        <?php 
-            $extFormula = strtolower(pathinfo($ingreso['pdf_formula_final_url'], PATHINFO_EXTENSION));
-        ?>
+        <!-- ANEXO 3: PDF FACTURA / COMPROBANTE FINAL -->
+        <?php if (!empty($ingreso['pdf_formula_final_url']) && file_exists(BASE_DIR . '/' . $ingreso['pdf_formula_final_url']) && strtolower(pathinfo($ingreso['pdf_formula_final_url'], PATHINFO_EXTENSION)) === 'pdf'): ?>
         <div class="pdf-embed-container mt-5 border-top pt-4">
             <h5 class="fw-bold text-dark mb-3">
-                <i class="fa-solid fa-file-invoice-dollar text-success me-2"></i> ANEXO 3: FÓRMULA FINAL / COMPROBANTE ADJUNTADO EN ENTREGA
+                <i class="fa-solid fa-file-invoice-dollar text-primary me-2"></i> ANEXO 3: COMPROBANTE / FACTURA TERCEROS
             </h5>
 
-            <?php if (in_array($extFormula, ['jpg', 'jpeg', 'png', 'webp', 'gif'])): ?>
-                <div class="text-center my-3">
-                    <img src="<?= htmlspecialchars($ingreso['pdf_formula_final_url']) ?>" class="img-fluid rounded border shadow-sm" style="max-width: 900px; max-height: 1000px; object-fit: contain;">
+            <div id="pdf-formula-final-canvas-list" class="text-center my-3">
+                <div class="spinner-border text-dark my-4" role="status">
+                    <span class="visually-hidden">Cargando factura...</span>
                 </div>
-            <?php else: ?>
-                <div id="pdf-formula-final-canvas-list" class="text-center my-3">
-                    <div class="spinner-border text-dark my-4" role="status">
-                        <span class="visually-hidden">Cargando comprobante final de terceros...</span>
-                    </div>
-                </div>
-            <?php endif; ?>
+            </div>
         </div>
         <?php endif; ?>
-
     </div>
 </div>
 
@@ -314,9 +314,13 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    <?php if (!empty($ingreso['pdf_transcripcion_url']) && file_exists(BASE_DIR . '/' . $ingreso['pdf_transcripcion_url'])): ?>
-        renderizarPdfCompleto('<?= $ingreso['pdf_transcripcion_url'] ?>', 'pdf-transcripcion-canvas-list');
-    <?php endif; ?>
+    const transContainers = document.querySelectorAll('.pdf-acta-trans-canvas');
+    transContainers.forEach(cont => {
+        const url = cont.getAttribute('data-pdf-url');
+        if (url) {
+            renderizarPdfCompleto(url, cont.id);
+        }
+    });
 
     <?php if (!empty($ingreso['pdf_alistamiento']) && file_exists(BASE_DIR . '/' . $ingreso['pdf_alistamiento'])): ?>
         renderizarPdfCompleto('<?= $ingreso['pdf_alistamiento'] ?>', 'pdf-alistamiento-canvas-list');

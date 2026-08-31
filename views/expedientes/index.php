@@ -190,7 +190,11 @@ require_once __DIR__ . '/../layouts/header.php';
                                             if ($t === 'HISTORIA_CLINICA' || str_contains($filename, 'historia')) {
                                                 return ['tipo' => 'Historia Clínica / Anexo', 'icon' => 'fa-solid fa-clipboard-user text-info'];
                                             }
-                                            // 7. Factura
+                                            // 7. Transcripción
+                                            if ($t === 'TRANSCRIPCION' || str_contains($t, 'TRANSCRIP') || str_contains($filename, 'transcripcion')) {
+                                                return ['tipo' => 'Orden Médica Transcrita', 'icon' => 'fa-solid fa-file-circle-check text-success'];
+                                            }
+                                            // 8. Factura
                                             if ($t === 'FACTURA' || str_contains($filename, 'factura')) {
                                                 return ['tipo' => 'Factura / Comprobante Terceros', 'icon' => 'fa-solid fa-file-invoice-dollar text-success'];
                                             }
@@ -226,8 +230,13 @@ require_once __DIR__ . '/../layouts/header.php';
                                         }
                                     }
 
-                                    // 2. PDF de Transcripción
-                                    if (!empty($detalles['pdf_transcripcion_url'])) {
+                                    // 2. PDFs de Transcripción (Soporta múltiples)
+                                    if (!empty($detalles['transcripciones_archivos'])) {
+                                        foreach ($detalles['transcripciones_archivos'] as $idxT => $tDoc) {
+                                            $lblT = count($detalles['transcripciones_archivos']) > 1 ? "Orden Transcrita #" . ($idxT + 1) : "Orden Médica Transcrita";
+                                            $agregarSoporte($lblT, $tDoc['url'], 'fa-solid fa-file-circle-check text-success');
+                                        }
+                                    } elseif (!empty($detalles['pdf_transcripcion_url'])) {
                                         $agregarSoporte('Orden Médica Transcrita', $detalles['pdf_transcripcion_url'], 'fa-solid fa-file-circle-check text-success');
                                     }
 
@@ -331,32 +340,48 @@ require_once __DIR__ . '/../layouts/header.php';
                                     <!-- Reimpresión & Acciones -->
                                     <td class="text-end pe-4">
                                         <div class="d-inline-flex align-items-center gap-1 justify-content-end">
+                                            <!-- Botón Rápido Orden Unificada -->
+                                            <a href="index.php?page=imprimir_orden_unificada&id=<?= $ing['id'] ?>&auto_print=1" target="_blank" class="btn btn-sm btn-outline-primary fw-bold shadow-sm px-2" title="Reimprimir Orden Unificada + Tiquete">
+                                                <i class="fa-solid fa-print me-1"></i> Orden Unificada
+                                            </a>
+
                                             <!-- Botón Acta Firmada (Principal) -->
                                             <?php if ($ing['estado_tramite'] === 'ENTREGADO' || !empty($detalles['firma_paciente_url'])): ?>
-                                                <a href="index.php?page=imprimir_acta&id=<?= $ing['id'] ?>" target="_blank" class="btn btn-sm btn-success fw-bold shadow-sm px-3" title="Reimprimir Acta Digital de Conformidad y Entrega">
-                                                    <i class="fa-solid fa-file-signature me-1"></i> Acta Firmada
+                                                <a href="index.php?page=imprimir_acta&id=<?= $ing['id'] ?>" target="_blank" class="btn btn-sm btn-success fw-bold shadow-sm px-2" title="Reimprimir Acta Digital de Conformidad y Entrega">
+                                                    <i class="fa-solid fa-file-signature me-1"></i> Acta
                                                 </a>
-                                            <?php else: ?>
-                                                <span class="badge bg-light text-muted border px-2 py-1 me-1">Sin Entrega</span>
                                             <?php endif; ?>
 
-                                            <!-- Dropdown Tiquetes Térmicos -->
+                                            <!-- Dropdown Todos los Tiquetes y Documentos -->
                                             <div class="dropdown d-inline-block">
-                                                <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" title="Reimprimir Tiquetes Térmicos">
-                                                    <i class="fa-solid fa-print"></i>
+                                                <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" title="Más opciones de impresión">
+                                                    <i class="fa-solid fa-ellipsis-vertical"></i>
                                                 </button>
                                                 <ul class="dropdown-menu dropdown-menu-end dropdown-menu-custom shadow">
-                                                    <li class="dropdown-header small text-uppercase fw-bold text-muted px-3 py-1">Reimpresión Térmica</li>
+                                                    <li class="dropdown-header small text-uppercase fw-bold text-muted px-3 py-1">Opciones de Impresión</li>
                                                     <li>
-                                                        <a class="dropdown-item dropdown-item-custom" href="index.php?page=imprimir_ticket&id=<?= $ing['id'] ?>" target="_blank">
-                                                            <i class="fa-solid fa-receipt text-primary me-2"></i> Ticket de Ingreso / Turno
+                                                        <a class="dropdown-item dropdown-item-custom fw-bold text-primary" href="index.php?page=imprimir_orden_unificada&id=<?= $ing['id'] ?>&auto_print=1" target="_blank">
+                                                            <i class="fa-solid fa-print text-primary me-2"></i> 🖨️ Orden Unificada + Tiquete
+                                                        </a>
+                                                    </li>
+                                                    <li><hr class="dropdown-divider my-1"></li>
+                                                    <li>
+                                                        <a class="dropdown-item dropdown-item-custom" href="index.php?page=imprimir_ticket&id=<?= $ing['id'] ?>&auto_print=1" target="_blank">
+                                                            <i class="fa-solid fa-receipt text-secondary me-2"></i> Ticket de Ingreso / Turno
                                                         </a>
                                                     </li>
                                                     <li>
-                                                        <a class="dropdown-item dropdown-item-custom" href="index.php?page=imprimir_ticket_alistamiento&id=<?= $ing['id'] ?>" target="_blank">
+                                                        <a class="dropdown-item dropdown-item-custom" href="index.php?page=imprimir_ticket_alistamiento&id=<?= $ing['id'] ?>&auto_print=1" target="_blank">
                                                             <i class="fa-solid fa-boxes-packing text-warning me-2"></i> Ticket de Alistamiento
                                                         </a>
                                                     </li>
+                                                    <?php if ($ing['estado_tramite'] === 'ENTREGADO' || !empty($detalles['firma_paciente_url'])): ?>
+                                                    <li>
+                                                        <a class="dropdown-item dropdown-item-custom" href="index.php?page=imprimir_acta&id=<?= $ing['id'] ?>" target="_blank">
+                                                            <i class="fa-solid fa-file-signature text-success me-2"></i> Acta de Entrega Firmada
+                                                        </a>
+                                                    </li>
+                                                    <?php endif; ?>
                                                 </ul>
                                             </div>
                                         </div>

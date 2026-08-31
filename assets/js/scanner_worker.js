@@ -47,6 +47,9 @@ function loadDependencies() {
     return cvReadyPromise;
 }
 
+let cachedCanvas = null;
+let cachedCtx = null;
+
 self.onmessage = async (e) => {
     const msg = e.data;
     if (!msg || msg.type !== 'frame') return;
@@ -54,12 +57,15 @@ self.onmessage = async (e) => {
     try {
         await loadDependencies();
 
-        const canvas = new OffscreenCanvas(msg.frameW, msg.frameH);
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(msg.bitmap, 0, 0, msg.frameW, msg.frameH);
+        if (!cachedCanvas || cachedCanvas.width !== msg.frameW || cachedCanvas.height !== msg.frameH) {
+            cachedCanvas = new OffscreenCanvas(msg.frameW, msg.frameH);
+            cachedCtx = cachedCanvas.getContext('2d', { willReadFrequently: true });
+        }
+
+        cachedCtx.drawImage(msg.bitmap, 0, 0, msg.frameW, msg.frameH);
         msg.bitmap.close();
 
-        const imageData = ctx.getImageData(0, 0, msg.frameW, msg.frameH);
+        const imageData = cachedCtx.getImageData(0, 0, msg.frameW, msg.frameH);
         const result = self.SISPAM_Scanner.detectDocumentQuad(
             imageData, msg.frameW, msg.frameH, {
                 minAreaRatio: msg.minAreaRatio,

@@ -497,7 +497,7 @@ function ensureScannerLibsLoaded() {
                             <label class="form-label fw-semibold">Tipo de Documento <span class="text-danger">*</span></label>
                             <select name="tipo_documento" id="tipo_documento" class="form-select" required>
                                 <?php foreach (TIPOS_DOCUMENTO as $code => $label): ?>
-                                    <option value="<?= $code ?>"><?= $code ?> - <?= $label ?></option>
+                                    <option value="<?= $code ?>"><?= $label ?></option>
                                 <?php endforeach; ?>
                             </select>
                         </div>
@@ -556,17 +556,17 @@ function ensureScannerLibsLoaded() {
                         <div class="col-md-3">
                             <label class="form-label fw-semibold">Sexo <span class="text-danger">*</span></label>
                             <select name="sexo" id="sexo" class="form-select" required>
-                                <option value="Masculino" selected>Masculino</option>
-                                <option value="Femenino">Femenino</option>
-                                <option value="Indeterminado o Intersexual">Indeterminado o Intersexual</option>
+                                <?php foreach (SEXOS as $code => $label): ?>
+                                    <option value="<?= $code ?>" <?= $code === 'Masculino' ? 'selected' : '' ?>><?= $label ?></option>
+                                <?php endforeach; ?>
                             </select>
                         </div>
 
                         <div class="col-md-3">
                             <label class="form-label fw-semibold">Estado Civil <span class="text-danger">*</span></label>
                             <select name="estado_civil" id="estado_civil" class="form-select" required>
-                                <?php foreach (ESTADOS_CIVILES as $ec): ?>
-                                    <option value="<?= $ec ?>"><?= $ec ?></option>
+                                <?php foreach (ESTADOS_CIVILES as $code => $label): ?>
+                                    <option value="<?= $code ?>" <?= $code === 'Soltero' ? 'selected' : '' ?>><?= $label ?></option>
                                 <?php endforeach; ?>
                             </select>
                         </div>
@@ -588,7 +588,11 @@ function ensureScannerLibsLoaded() {
 
                         <div class="col-md-3">
                             <label class="form-label fw-semibold">Ciudad de Nacimiento</label>
-                            <input type="text" name="ciudad_nacimiento" id="ciudad_nacimiento" class="form-control" value="MEDELLIN-ANT-05001">
+                            <select name="ciudad_nacimiento" id="ciudad_nacimiento" class="form-select">
+                                <?php foreach (MUNICIPIOS_ANTIOQUIA as $code => $label): ?>
+                                    <option value="<?= $code ?>" <?= $code === '05001' ? 'selected' : '' ?>><?= $label ?></option>
+                                <?php endforeach; ?>
+                            </select>
                         </div>
 
                         <div class="col-md-3">
@@ -642,22 +646,27 @@ function ensureScannerLibsLoaded() {
 
                         <div class="col-md-4">
                             <label class="form-label fw-semibold">Ciudad de Residencia <span class="text-danger">*</span></label>
-                            <input type="text" name="ciudad_residencia" id="ciudad_residencia" class="form-control" value="MEDELLIN-ANT-05001" required>
+                            <select name="ciudad_residencia" id="ciudad_residencia" class="form-select" required>
+                                <?php foreach (MUNICIPIOS_ANTIOQUIA as $code => $label): ?>
+                                    <option value="<?= $code ?>" <?= $code === '05001' ? 'selected' : '' ?>><?= $label ?></option>
+                                <?php endforeach; ?>
+                            </select>
                         </div>
 
                         <div class="col-md-3">
                             <label class="form-label fw-semibold">Zona <span class="text-danger">*</span></label>
                             <select name="zona" id="zona" class="form-select" required>
-                                <option value="Urbana" selected>Urbana</option>
-                                <option value="Rural">Rural</option>
+                                <?php foreach (ZONAS as $code => $label): ?>
+                                    <option value="<?= $code ?>" <?= $code === 'U' ? 'selected' : '' ?>><?= $label ?></option>
+                                <?php endforeach; ?>
                             </select>
                         </div>
 
                         <div class="col-md-5">
                             <label class="form-label fw-semibold">Barrio de Residencia <span class="text-danger">*</span></label>
                             <select name="barrio" id="barrio" class="form-select" required>
-                                <?php foreach (BARRIOS_MEDELLIN as $b): ?>
-                                    <option value="<?= $b ?>"><?= $b ?></option>
+                                <?php foreach (BARRIOS_MEDELLIN as $code => $name): ?>
+                                    <option value="<?= $code ?>" <?= $code === 'B080' ? 'selected' : '' ?>><?= $name ?></option>
                                 <?php endforeach; ?>
                             </select>
                         </div>
@@ -682,8 +691,8 @@ function ensureScannerLibsLoaded() {
                             <label class="form-label fw-semibold">Aseguradora (EPS) <span class="text-danger">*</span></label>
                             <select name="eps_nombre" id="eps_nombre" class="form-select" required>
                                 <option value="">-- Seleccionar EPS --</option>
-                                <?php foreach (EPS_COLOMBIA as $eps): ?>
-                                    <option value="<?= $eps ?>"><?= $eps ?></option>
+                                <?php foreach (EPS_COLOMBIA as $code => $label): ?>
+                                    <option value="<?= $code ?>" <?= $code === 'EPS040' ? 'selected' : '' ?>><?= $label ?></option>
                                 <?php endforeach; ?>
                             </select>
                         </div>
@@ -703,8 +712,8 @@ function ensureScannerLibsLoaded() {
                         <div class="col-md-4">
                             <label class="form-label fw-semibold">Tipo de Afiliado <span class="text-danger">*</span></label>
                             <select name="tipo_afiliado" id="tipo_afiliado" class="form-select" required>
-                                <?php foreach (TIPOS_AFILIADO as $ta): ?>
-                                    <option value="<?= $ta ?>"><?= $ta ?></option>
+                                <?php foreach (TIPOS_AFILIADO as $code => $label): ?>
+                                    <option value="<?= $code ?>" <?= $code === '01' ? 'selected' : '' ?>><?= $label ?></option>
                                 <?php endforeach; ?>
                             </select>
                         </div>
@@ -712,8 +721,8 @@ function ensureScannerLibsLoaded() {
                         <div class="col-md-4">
                             <label class="form-label fw-semibold">Nivel Socioeconómico <span class="text-danger">*</span></label>
                             <select name="nivel_socioeconomico" id="nivel_socioeconomico" class="form-select" required>
-                                <?php foreach (NIVELES_SOCIOECONOMICOS as $ns): ?>
-                                    <option value="<?= $ns ?>"><?= $ns ?></option>
+                                <?php foreach (NIVELES_SOCIOECONOMICOS as $code => $label): ?>
+                                    <option value="<?= $code ?>" <?= $code === '1' ? 'selected' : '' ?>><?= $label ?></option>
                                 <?php endforeach; ?>
                             </select>
                         </div>
@@ -721,20 +730,18 @@ function ensureScannerLibsLoaded() {
                         <div class="col-md-4">
                             <label class="form-label fw-semibold">Estrato Socioeconómico</label>
                             <select name="estrato_socioeconomico" id="estrato_socioeconomico" class="form-select">
-                                <option value="1">Estrato 1</option>
-                                <option value="2">Estrato 2</option>
-                                <option value="3" selected>Estrato 3</option>
-                                <option value="4">Estrato 4</option>
-                                <option value="5">Estrato 5</option>
-                                <option value="6">Estrato 6</option>
+                                <?php foreach (ESTRATOS_SOCIOECONOMICOS as $code => $label): ?>
+                                    <option value="<?= $code ?>" <?= $code === '1' ? 'selected' : '' ?>><?= $label ?></option>
+                                <?php endforeach; ?>
                             </select>
                         </div>
 
                         <div class="col-md-4">
                             <label class="form-label fw-semibold">Ocupación</label>
                             <select name="ocupacion" id="ocupacion" class="form-select">
-                                <?php foreach (OCUPACIONES as $oc): ?>
-                                    <option value="<?= $oc ?>"><?= $oc ?></option>
+                                <option value="">Seleccione una ocupación...</option>
+                                <?php foreach (OCUPACIONES as $code => $label): ?>
+                                    <option value="<?= $code ?>"><?= $label ?></option>
                                 <?php endforeach; ?>
                             </select>
                         </div>
@@ -742,22 +749,17 @@ function ensureScannerLibsLoaded() {
                         <div class="col-md-4">
                             <label class="form-label fw-semibold">Grupo Sanguíneo / RH</label>
                             <select name="grupo_sanguineo" id="grupo_sanguineo" class="form-select">
-                                <option value="O+" selected>O+</option>
-                                <option value="O-">O-</option>
-                                <option value="A+">A+</option>
-                                <option value="A-">A-</option>
-                                <option value="B+">B+</option>
-                                <option value="B-">B-</option>
-                                <option value="AB+">AB+</option>
-                                <option value="AB-">AB-</option>
+                                <?php foreach (GRUPOS_SANGUINEOS as $code => $label): ?>
+                                    <option value="<?= $code ?>" <?= $code === 'O+' ? 'selected' : '' ?>><?= $label ?></option>
+                                <?php endforeach; ?>
                             </select>
                         </div>
 
                         <div class="col-md-4">
                             <label class="form-label fw-semibold">Sede de Atención <span class="text-danger">*</span></label>
                             <select name="sede_atencion" id="sede_atencion" class="form-select" required>
-                                <?php foreach (SEDES_ATENCION as $sa): ?>
-                                    <option value="<?= $sa ?>"><?= $sa ?></option>
+                                <?php foreach (SEDES_ATENCION as $code => $label): ?>
+                                    <option value="<?= $code ?>" <?= $code === '01' ? 'selected' : '' ?>><?= $label ?></option>
                                 <?php endforeach; ?>
                             </select>
                         </div>
@@ -810,8 +812,8 @@ function ensureScannerLibsLoaded() {
                         <div class="col-md-4">
                             <label class="form-label fw-semibold">Grupo Poblacional <span class="text-danger">*</span></label>
                             <select name="grupo_poblacional" id="grupo_poblacional" class="form-select" required>
-                                <?php foreach (GRUPOS_POBLACIONALES as $gp): ?>
-                                    <option value="<?= $gp ?>"><?= $gp ?></option>
+                                <?php foreach (GRUPOS_POBLACIONALES as $code => $label): ?>
+                                    <option value="<?= $code ?>" <?= $code === '5' ? 'selected' : '' ?>><?= $label ?></option>
                                 <?php endforeach; ?>
                             </select>
                         </div>
@@ -819,8 +821,8 @@ function ensureScannerLibsLoaded() {
                         <div class="col-md-4">
                             <label class="form-label fw-semibold">Grupo Étnico <span class="text-danger">*</span></label>
                             <select name="grupo_etnico" id="grupo_etnico" class="form-select" required>
-                                <?php foreach (GRUPOS_ETNICOS as $ge): ?>
-                                    <option value="<?= $ge ?>"><?= $ge ?></option>
+                                <?php foreach (GRUPOS_ETNICOS as $code => $label): ?>
+                                    <option value="<?= $code ?>" <?= $code === 'S' ? 'selected' : '' ?>><?= $label ?></option>
                                 <?php endforeach; ?>
                             </select>
                         </div>
@@ -833,8 +835,8 @@ function ensureScannerLibsLoaded() {
                         <div class="col-md-6">
                             <label class="form-label fw-semibold">Tipo de Discapacidad <span class="text-danger">*</span></label>
                             <select name="tipo_discapacidad" id="tipo_discapacidad" class="form-select" required>
-                                <?php foreach (TIPOS_DISCAPACIDAD as $td): ?>
-                                    <option value="<?= $td ?>"><?= $td ?></option>
+                                <?php foreach (TIPOS_DISCAPACIDAD as $code => $label): ?>
+                                    <option value="<?= $code ?>" <?= $code === 'N' ? 'selected' : '' ?>><?= $label ?></option>
                                 <?php endforeach; ?>
                             </select>
                         </div>
@@ -842,8 +844,8 @@ function ensureScannerLibsLoaded() {
                         <div class="col-md-6">
                             <label class="form-label fw-semibold">Tipo de Escolaridad <span class="text-danger">*</span></label>
                             <select name="tipo_escolaridad" id="tipo_escolaridad" class="form-select" required>
-                                <?php foreach (TIPOS_ESCOLARIDAD as $te): ?>
-                                    <option value="<?= $te ?>"><?= $te ?></option>
+                                <?php foreach (TIPOS_ESCOLARIDAD as $code => $label): ?>
+                                    <option value="<?= $code ?>" <?= $code === '13' ? 'selected' : '' ?>><?= $label ?></option>
                                 <?php endforeach; ?>
                             </select>
                         </div>
@@ -1476,6 +1478,211 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function autocompletarFormulario(data) {
+    if (!data) return;
+
+    // Seleccionar tipo de documento si está presente
+    if (data.tipo_documento && document.getElementById('tipo_documento')) {
+        const sel = document.getElementById('tipo_documento');
+        const cleanTipo = data.tipo_documento.split('-')[0].trim().toUpperCase();
+        for (let opt of sel.options) {
+            if (opt.value === data.tipo_documento || opt.value.toUpperCase() === cleanTipo) {
+                sel.value = opt.value;
+                break;
+            }
+        }
+    }
+
+    // Seleccionar ocupación si está presente (por código o nombre)
+    if (data.ocupacion && document.getElementById('ocupacion')) {
+        const selOc = document.getElementById('ocupacion');
+        const cleanOc = String(data.ocupacion).split('-')[0].trim();
+        for (let opt of selOc.options) {
+            if (opt.value === data.ocupacion || opt.value === cleanOc) {
+                selOc.value = opt.value;
+                break;
+            }
+        }
+    }
+
+    // Seleccionar ciudad de nacimiento si está presente
+    if (data.ciudad_nacimiento && document.getElementById('ciudad_nacimiento')) {
+        const selCn = document.getElementById('ciudad_nacimiento');
+        const rawCn = String(data.ciudad_nacimiento).trim();
+        const cleanCn = rawCn.includes('-') ? rawCn.split('-').pop().trim() : rawCn;
+        for (let opt of selCn.options) {
+            if (opt.value === cleanCn || opt.value === rawCn || opt.textContent.includes(rawCn)) {
+                selCn.value = opt.value;
+                break;
+            }
+        }
+    }
+
+    // Seleccionar ciudad de residencia si está presente
+    if (data.ciudad_residencia && document.getElementById('ciudad_residencia')) {
+        const selCr = document.getElementById('ciudad_residencia');
+        const rawCr = String(data.ciudad_residencia).trim();
+        const cleanCr = rawCr.includes('-') ? rawCr.split('-').pop().trim() : rawCr;
+        for (let opt of selCr.options) {
+            if (opt.value === cleanCr || opt.value === rawCr || opt.textContent.includes(rawCr)) {
+                selCr.value = opt.value;
+                break;
+            }
+        }
+    }
+
+    // Seleccionar grupo sanguíneo si está presente
+    if (data.grupo_sanguineo && document.getElementById('grupo_sanguineo')) {
+        const selGs = document.getElementById('grupo_sanguineo');
+        const rawGs = String(data.grupo_sanguineo).trim();
+        for (let opt of selGs.options) {
+            if (opt.value === rawGs || (rawGs.startsWith('NoSab') && opt.value === 'NoSab')) {
+                selGs.value = opt.value;
+                break;
+            }
+        }
+    }
+
+    // Seleccionar grupo étnico si está presente
+    if (data.grupo_etnico && document.getElementById('grupo_etnico')) {
+        const selGe = document.getElementById('grupo_etnico');
+        const rawGe = String(data.grupo_etnico).trim();
+        const cleanGe = rawGe.includes('-') ? rawGe.split('-')[0].trim().toUpperCase() : rawGe.toUpperCase();
+        for (let opt of selGe.options) {
+            if (opt.value.toUpperCase() === cleanGe || opt.value.toUpperCase() === rawGe.toUpperCase() || opt.textContent.toUpperCase().includes(rawGe.toUpperCase())) {
+                selGe.value = opt.value;
+                break;
+            }
+        }
+    }
+
+    // Seleccionar tipo de discapacidad si está presente
+    if (data.tipo_discapacidad && document.getElementById('tipo_discapacidad')) {
+        const selTd = document.getElementById('tipo_discapacidad');
+        const rawTd = String(data.tipo_discapacidad).trim();
+        const cleanTd = rawTd.includes('-') ? rawTd.split('-')[0].trim().toUpperCase() : rawTd.toUpperCase();
+        for (let opt of selTd.options) {
+            if (opt.value.toUpperCase() === cleanTd || opt.value.toUpperCase() === rawTd.toUpperCase() || opt.textContent.toUpperCase().includes(rawTd.toUpperCase())) {
+                selTd.value = opt.value;
+                break;
+            }
+        }
+    }
+
+    // Seleccionar tipo de escolaridad si está presente
+    if (data.tipo_escolaridad && document.getElementById('tipo_escolaridad')) {
+        const selTe = document.getElementById('tipo_escolaridad');
+        const rawTe = String(data.tipo_escolaridad).trim();
+        const cleanTe = rawTe.includes('-') ? rawTe.split('-')[0].trim() : rawTe;
+        for (let opt of selTe.options) {
+            if (opt.value === cleanTe || opt.value === rawTe || opt.textContent.includes(rawTe)) {
+                selTe.value = opt.value;
+                break;
+            }
+        }
+    }
+
+    // Seleccionar zona si está presente
+    if (data.zona && document.getElementById('zona')) {
+        const selZona = document.getElementById('zona');
+        const rawZona = String(data.zona).trim();
+        const cleanZona = rawZona.includes('-') ? rawZona.split('-')[0].trim().toUpperCase() : rawZona.toUpperCase();
+        for (let opt of selZona.options) {
+            if (opt.value.toUpperCase() === cleanZona || opt.value.toUpperCase() === rawZona || opt.textContent.toUpperCase().includes(rawZona)) {
+                selZona.value = opt.value;
+                break;
+            }
+        }
+    }
+
+    // Seleccionar barrio si está presente
+    if (data.barrio && document.getElementById('barrio')) {
+        const selBarrio = document.getElementById('barrio');
+        const rawBarrio = String(data.barrio).trim().toUpperCase();
+        for (let opt of selBarrio.options) {
+            if (opt.value.toUpperCase() === rawBarrio || opt.textContent.toUpperCase().trim() === rawBarrio || opt.textContent.toUpperCase().includes(rawBarrio)) {
+                selBarrio.value = opt.value;
+                break;
+            }
+        }
+    }
+
+    // Seleccionar EPS si está presente
+    if (data.eps_nombre && document.getElementById('eps_nombre')) {
+        const selEps = document.getElementById('eps_nombre');
+        const rawEps = String(data.eps_nombre).trim().toUpperCase();
+        for (let opt of selEps.options) {
+            if (opt.value.toUpperCase() === rawEps || opt.textContent.toUpperCase().includes(rawEps)) {
+                selEps.value = opt.value;
+                break;
+            }
+        }
+    }
+
+    // Seleccionar tipo de afiliado si está presente
+    if (data.tipo_afiliado && document.getElementById('tipo_afiliado')) {
+        const selTa = document.getElementById('tipo_afiliado');
+        const rawTa = String(data.tipo_afiliado).trim();
+        const cleanTa = rawTa.includes('-') ? rawTa.split('-')[0].trim() : rawTa;
+        for (let opt of selTa.options) {
+            if (opt.value === cleanTa || opt.value === rawTa || opt.textContent.toUpperCase().includes(rawTa.toUpperCase())) {
+                selTa.value = opt.value;
+                break;
+            }
+        }
+    }
+
+    // Seleccionar nivel socioeconómico si está presente
+    if (data.nivel_socioeconomico && document.getElementById('nivel_socioeconomico')) {
+        const selNs = document.getElementById('nivel_socioeconomico');
+        const rawNs = String(data.nivel_socioeconomico).trim();
+        const cleanNs = rawNs.includes('-') ? rawNs.split('-')[0].trim() : rawNs;
+        for (let opt of selNs.options) {
+            if (opt.value === cleanNs || opt.value === rawNs || opt.textContent.toUpperCase().includes(rawNs.toUpperCase())) {
+                selNs.value = opt.value;
+                break;
+            }
+        }
+    }
+
+    // Seleccionar estrato socioeconómico si está presente
+    if (data.estrato_socioeconomico && document.getElementById('estrato_socioeconomico')) {
+        const selEs = document.getElementById('estrato_socioeconomico');
+        const rawEs = String(data.estrato_socioeconomico).trim();
+        const cleanEs = rawEs.includes('-') ? rawEs.split('-')[0].trim() : rawEs.replace(/[^\d]/g, '');
+        for (let opt of selEs.options) {
+            if (opt.value === cleanEs || opt.value === rawEs || opt.textContent.includes(rawEs)) {
+                selEs.value = opt.value;
+                break;
+            }
+        }
+    }
+
+    // Seleccionar sede de atención si está presente
+    if (data.sede_atencion && document.getElementById('sede_atencion')) {
+        const selSa = document.getElementById('sede_atencion');
+        const rawSa = String(data.sede_atencion).trim();
+        const cleanSa = rawSa.includes('-') ? rawSa.split('-')[0].trim() : rawSa;
+        for (let opt of selSa.options) {
+            if (opt.value === cleanSa || opt.value === rawSa || opt.textContent.toUpperCase().includes(rawSa.toUpperCase())) {
+                selSa.value = opt.value;
+                break;
+            }
+        }
+    }
+
+    // Seleccionar grupo poblacional si está presente
+    if (data.grupo_poblacional && document.getElementById('grupo_poblacional')) {
+        const selGp = document.getElementById('grupo_poblacional');
+        const rawGp = String(data.grupo_poblacional).trim();
+        const cleanGp = rawGp.includes('-') ? rawGp.split('-')[0].trim() : rawGp;
+        for (let opt of selGp.options) {
+            if (opt.value === cleanGp || opt.value === rawGp || opt.textContent.toUpperCase().includes(rawGp.toUpperCase())) {
+                selGp.value = opt.value;
+                break;
+            }
+        }
+    }
+
     const mapFields = [
         'primer_apellido', 'segundo_apellido', 'primer_nombre', 'segundo_nombre',
         'fecha_nacimiento', 'ciudad_expedicion', 'estado', 'sexo', 'estado_civil',
@@ -1499,14 +1706,14 @@ function autocompletarFormulario(data) {
     });
 
     if (!data.primer_apellido && data.apellidos) {
-        const partsA = data.apellidos.trim().split(' ');
-        document.getElementById('primer_apellido').value = partsA[0] || '';
-        document.getElementById('segundo_apellido').value = partsA.slice(1).join(' ') || '';
+        const partsA = data.apellidos.trim().split(/\s+/);
+        if (document.getElementById('primer_apellido')) document.getElementById('primer_apellido').value = partsA[0] || '';
+        if (document.getElementById('segundo_apellido')) document.getElementById('segundo_apellido').value = partsA.slice(1).join(' ') || '';
     }
     if (!data.primer_nombre && data.nombres) {
-        const partsN = data.nombres.trim().split(' ');
-        document.getElementById('primer_nombre').value = partsN[0] || '';
-        document.getElementById('segundo_nombre').value = partsN.slice(1).join(' ') || '';
+        const partsN = data.nombres.trim().split(/\s+/);
+        if (document.getElementById('primer_nombre')) document.getElementById('primer_nombre').value = partsN[0] || '';
+        if (document.getElementById('segundo_nombre')) document.getElementById('segundo_nombre').value = partsN.slice(1).join(' ') || '';
     }
 
     if (document.getElementById('actualiza_citas_plan')) {

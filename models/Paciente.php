@@ -9,12 +9,42 @@ class Paciente {
     }
 
     public function getByDocumento($tipo_doc, $num_doc) {
+        $rawDoc = trim($num_doc);
+        $cleanDoc = preg_replace('/[^\\w\\-]/', '', $rawDoc);
+        $cleanTipo = strtoupper(trim(explode('-', $tipo_doc)[0]));
+
+        // 1. Búsqueda prioritaria por tipo y documento exacto o normalizado
         $stmt = $this->db->prepare("
             SELECT * FROM pacientes 
-            WHERE tipo_documento = :tipo_doc AND numero_documento = :num_doc
+            WHERE (tipo_documento = :tipo_doc OR TRIM(tipo_documento) = :clean_tipo)
+              AND (numero_documento = :num_doc1 OR TRIM(numero_documento) = :num_doc2 OR REPLACE(REPLACE(numero_documento, '.', ''), ' ', '') = :clean_doc)
+            ORDER BY id DESC LIMIT 1
         ");
-        $stmt->execute([':tipo_doc' => $tipo_doc, ':num_doc' => $num_doc]);
-        return $stmt->fetch();
+        $stmt->execute([
+            ':tipo_doc'   => $tipo_doc,
+            ':clean_tipo' => $cleanTipo,
+            ':num_doc1'   => $rawDoc,
+            ':num_doc2'   => $rawDoc,
+            ':clean_doc'  => $cleanDoc
+        ]);
+        $res = $stmt->fetch();
+
+        // 2. Si no coincide el tipo, buscar solo por número de documento como fallback
+        if (!$res) {
+            $stmtFallback = $this->db->prepare("
+                SELECT * FROM pacientes 
+                WHERE numero_documento = :fb_doc1 OR TRIM(numero_documento) = :fb_doc2 OR REPLACE(REPLACE(numero_documento, '.', ''), ' ', '') = :fb_clean_doc
+                ORDER BY id DESC LIMIT 1
+            ");
+            $stmtFallback->execute([
+                ':fb_doc1'      => $rawDoc,
+                ':fb_doc2'      => $rawDoc,
+                ':fb_clean_doc' => $cleanDoc
+            ]);
+            $res = $stmtFallback->fetch();
+        }
+
+        return $res;
     }
 
     public function getById($id) {
@@ -49,7 +79,7 @@ class Paciente {
             'segundo_nombre'                => $segundo_nombre,
             'pais_nacimiento'               => $data['pais_nacimiento'] ?? 'COLOMBIA',
             'nacionalidad'                  => $data['nacionalidad'] ?? 'COLOMBIANA',
-            'ciudad_nacimiento'             => $data['ciudad_nacimiento'] ?? 'MEDELLIN-ANT-05001',
+            'ciudad_nacimiento'             => $data['ciudad_nacimiento'] ?? '05001',
             'sexo'                          => $data['sexo'] ?? 'Masculino',
             'identidad_genero'              => $data['identidad_genero'] ?? null,
             'estado_civil'                  => $data['estado_civil'] ?? 'Soltero(a)',
@@ -59,7 +89,7 @@ class Paciente {
             'contacto_emergencia_telefono'  => $data['contacto_emergencia_telefono'] ?? null,
             'contacto_emergencia_parentesco'=> $data['contacto_emergencia_parentesco'] ?? null,
             'grupo_poblacional'             => $data['grupo_poblacional'] ?? 'Otro Grupo Poblacional',
-            'grupo_etnico'                  => $data['grupo_etnico'] ?? 'No Aplica',
+            'grupo_etnico'                  => $data['grupo_etnico'] ?? 'S - S/N',
             'comunidad_etnica'              => $data['comunidad_etnica'] ?? null,
             'tipo_discapacidad'             => $data['tipo_discapacidad'] ?? 'No Aplica',
             'tipo_escolaridad'              => $data['tipo_escolaridad'] ?? 'NA',
@@ -147,31 +177,30 @@ class Paciente {
     }
 
     /**
+     * ///////////////////////IMPORTANTE PARA LA API ////////////////////////
      * Actualiza únicamente el ID de Qrystalos después de una sincronización exitosa
-     * Crea la columna qrystalos_consecutivo si no existe (lógica defensiva)
-     * 
-     * @param string $tipo_doc Tipo de documento (CC, TI, etc.)
-     * @param string $num_doc Número de documento
-     * @param string $consecutivo IDAFILIADO devuelto por Qrystalos
-     * @return bool true si se actualizó correctamente
      */
     public function actualizarQrystalosId($tipo_doc, $num_doc, $consecutivo) {
-        // Verificar si la columna existe, si no, crearla
+        // Verificar si la columna existe en la tabla de la BD, si no, crearla
         $stmtCols = $this->db->query("SHOW COLUMNS FROM pacientes LIKE 'qrystalos_consecutivo'");
         if ($stmtCols->rowCount() == 0) {
             try {
-                $this->db->exec("ALTER TABLE `pacientes` ADD COLUMN `qrystalos_consecutivo` VARCHAR(50) NULL");
+                $this->db->exec("ALTER TABLE `pacientes` ADD COLUMN `qrystalos_consecutivo` VARCHAR(255) NULL");
             } catch (Exception $e) {
-                // Silenciar si ya fue agregada por otro proceso
+                // Silenciar error si otra instancia la creó al mismo tiempo
             }
         }
 
-        $sql = "UPDATE pacientes SET qrystalos_consecutivo = :consecutivo WHERE tipo_documento = :tipo_doc AND numero_documento = :num_doc";
-        $stmt = $this->db->prepare($sql);
-        return $stmt->execute([
-            'tipo_doc' => $tipo_doc,
-            'num_doc' => $num_doc,
-            'consecutivo' => $consecutivo
-        ]);
+        // Ejecutar el update local buscando al paciente mediante el buscador optimizado
+        $paciente = $this->getByDocumento($tipo_doc, $num_doc);
+        if ($paciente) {
+            $stmt = $this->db->prepare("UPDATE pacientes SET qrystalos_consecutivo = :consecutivo WHERE id = :id");
+            return $stmt->execute([
+                ':consecutivo' => $consecutivo,
+                ':id'          => $paciente['id']
+            ]);
+        }
+        return false;
     }
 }
+?>

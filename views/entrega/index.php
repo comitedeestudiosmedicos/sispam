@@ -206,64 +206,69 @@ require_once __DIR__ . '/../layouts/header.php';
                 $esPreferencial = (!empty($row['prioridad']) && $row['prioridad'] !== 'NORMAL');
                 $estado = $row['estado_tramite'];
                 $estaLlamado = ($estado === 'EN_ENTREGA');
-                $estado = $row['estado_tramite'];
-                $estaLlamado = ($estado === 'EN_ENTREGA');
                 $estaEntregado = ($estado === 'ENTREGADO');
-                $estaListoEntrega = in_array($estado, ['ALISTADO', 'GESTIONADO', 'ESPERA_ENTREGA', 'EN_ENTREGA', 'ENTREGADO']);
-                $enProcesoPrevio = !$estaListoEntrega;
             ?>
-            <div class="card border-0 shadow-lg rounded-4 overflow-hidden mb-4 bg-white" id="card-orden-<?= $row['id'] ?>">
-                <!-- Header -->
-                <div class="p-3 px-4 d-flex flex-wrap justify-content-between align-items-center <?= $estaEntregado ? 'bg-secondary' : ($enProcesoPrevio ? 'bg-secondary' : ($estaLlamado ? 'bg-success' : 'bg-primary')) ?> bg-gradient text-white" id="card-header-<?= $row['id'] ?>">
+            <div class="card border-0 shadow-lg rounded-4 overflow-hidden mb-4 bg-white hover-shadow-lg transition-all" id="card-orden-<?= $row['id'] ?>">
+                <!-- Header Moderno con Gradiente Elegante -->
+                <div class="p-3 px-4 d-flex flex-wrap justify-content-between align-items-center <?= $estaEntregado ? 'bg-secondary bg-gradient' : ($estaLlamado ? 'bg-success bg-gradient' : 'bg-primary bg-gradient') ?> text-white" id="card-header-<?= $row['id'] ?>">
                     <div class="d-flex align-items-center gap-2 flex-wrap">
-                        <span class="bg-white text-dark fw-bold font-monospace px-3 py-1 rounded-pill shadow-sm fs-5">
-                            <i class="fa-solid fa-receipt text-primary me-1"></i> <?= htmlspecialchars($row['ticket_numero']) ?>
+                        <span class="bg-white text-dark fw-bold font-monospace px-3 py-1 rounded-pill shadow-sm fs-5 d-inline-flex align-items-center">
+                            <i class="fa-solid fa-receipt text-primary me-2"></i> <?= htmlspecialchars($row['ticket_numero']) ?>
                         </span>
                         <span class="badge bg-light text-dark border px-3 py-2 rounded-pill fw-bold shadow-sm">
-                            <i class="fa-solid fa-location-dot text-warning me-1"></i> <?= htmlspecialchars($row['nombre_sede'] ?? 'Sede Principal') ?>
+                            <i class="fa-solid fa-building text-warning me-1"></i> <?= htmlspecialchars($row['nombre_sede'] ?? 'Sede Principal') ?>
                         </span>
                         <?php if ($esPreferencial): ?>
-                            <span class="badge bg-warning text-dark px-3 py-2 rounded-pill fw-bold shadow-sm"><i class="fa-solid fa-star me-1"></i> Preferencial</span>
+                            <span class="badge bg-warning text-dark px-3 py-2 rounded-pill fw-bold shadow-sm">
+                                <i class="fa-solid fa-star me-1"></i> Preferencial
+                            </span>
                         <?php endif; ?>
-                        <span class="badge bg-black bg-opacity-25 rounded-pill px-3 py-1 small">
+                        <span class="badge bg-black bg-opacity-25 rounded-pill px-3 py-2 small">
                             <i class="fa-solid fa-clock me-1"></i> <?= date('d/m/Y h:i A', strtotime($row['created_at'])) ?>
                         </span>
                     </div>
                     <div id="badge-estado-<?= $row['id'] ?>">
                         <?php if ($estaEntregado): ?>
-                            <span class="badge bg-dark text-white px-3 py-2 rounded-pill shadow-sm fw-bold"><i class="fa-solid fa-check-double me-1"></i> Entregado & Finalizado</span>
-                        <?php elseif ($enProcesoPrevio): ?>
-                            <span class="badge bg-warning text-dark px-3 py-2 rounded-pill shadow-sm fw-bold"><i class="fa-solid fa-hourglass-half me-1"></i> En Preparación: <?= htmlspecialchars($estado) ?></span>
+                            <span class="badge bg-dark text-white px-3 py-2 rounded-pill shadow-sm fw-bold">
+                                <i class="fa-solid fa-check-double text-success me-1"></i> Entregado & Finalizado
+                            </span>
                         <?php elseif ($estaLlamado): ?>
-                            <span class="badge bg-white text-success px-3 py-2 rounded-pill shadow-sm fw-bold"><i class="fa-solid fa-bell me-1"></i> Llamado Activo en <?= htmlspecialchars($row['modulo_entrega_asignado'] ?? 'Ventanilla') ?></span>
+                            <span class="badge bg-white text-success px-3 py-2 rounded-pill shadow-sm fw-bold">
+                                <i class="fa-solid fa-bell me-1"></i> Llamado Activo en <?= htmlspecialchars($row['modulo_entrega_asignado'] ?? 'Ventanilla') ?>
+                            </span>
                         <?php else: ?>
-                            <span class="badge bg-warning text-dark px-3 py-2 rounded-pill shadow-sm fw-bold"><i class="fa-solid fa-box-archive me-1"></i> Paquete en Estante (Pendiente de Llamar)</span>
+                            <span class="badge bg-warning text-dark px-3 py-2 rounded-pill shadow-sm fw-bold">
+                                <i class="fa-solid fa-box-archive me-1"></i> Paquete en Estante (Pendiente de Llamar)
+                            </span>
                         <?php endif; ?>
                     </div>
                 </div>
 
-                <!-- Body -->
-                <div class="p-4">
-                    <div class="row g-4 align-items-center">
-                        <!-- Patient Info -->
-                        <div class="col-lg-7 col-md-12">
+                <!-- Body Moderno con Grid de 3 Secciones -->
+                <div class="p-4 bg-white">
+                    <div class="row g-4">
+                        <!-- Bloque 1: Datos del Paciente -->
+                        <div class="col-xl-5 col-lg-6 col-md-12">
                             <div class="d-flex align-items-start gap-3">
-                                <div class="p-3 bg-primary bg-opacity-10 text-primary rounded-circle d-none d-sm-flex align-items-center justify-content-center shadow-sm" style="width: 54px; height: 54px;">
-                                    <i class="fa-solid fa-user-check fs-4"></i>
+                                <div class="p-3 bg-primary bg-opacity-10 text-primary rounded-circle d-none d-sm-flex align-items-center justify-content-center shadow-sm flex-shrink-0" style="width: 58px; height: 58px;">
+                                    <i class="fa-solid fa-user-check fs-3"></i>
                                 </div>
                                 <div class="flex-grow-1">
-                                    <h4 class="fw-bold text-dark mb-1">
+                                    <div class="text-uppercase text-muted fw-bold small mb-1">Información del Paciente:</div>
+                                    <h4 class="fw-bold text-dark mb-2 fs-5">
                                         <?= htmlspecialchars($row['nombres'] . ' ' . $row['apellidos']) ?>
                                     </h4>
                                     <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
-                                        <span class="badge bg-light text-dark border px-2 py-1">
-                                            <i class="fa-solid fa-id-card text-muted me-1"></i> <?= htmlspecialchars($row['tipo_documento'] . ' ' . $row['numero_documento']) ?>
+                                        <span class="badge bg-light text-dark border px-2 py-1 fs-6 fw-bold">
+                                            <i class="fa-solid fa-id-card text-primary me-1"></i> <?= htmlspecialchars($row['tipo_documento'] . ' ' . $row['numero_documento']) ?>
                                         </span>
                                         <span class="badge bg-info bg-opacity-10 text-info border border-info border-opacity-25 px-2 py-1 fw-bold">
                                             <i class="fa-solid fa-hospital me-1"></i> <?= htmlspecialchars($row['eps_nombre'] ?? 'Savia Salud') ?>
                                         </span>
                                         <?php if (!empty($row['telefono'])): ?>
-                                            <span class="text-muted small"><i class="fa-solid fa-phone text-muted me-1"></i> <?= htmlspecialchars($row['telefono']) ?></span>
+                                            <a href="tel:<?= htmlspecialchars($row['telefono']) ?>" class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25 px-2 py-1 text-decoration-none fw-bold">
+                                                <i class="fa-solid fa-phone me-1"></i> <?= htmlspecialchars($row['telefono']) ?>
+                                            </a>
                                         <?php endif; ?>
                                     </div>
                                     <div class="text-muted small">
@@ -273,83 +278,113 @@ require_once __DIR__ . '/../layouts/header.php';
                             </div>
                         </div>
 
-                        <!-- Documents -->
-                        <div class="col-lg-5 col-md-12 border-start-lg ps-lg-4">
-                            <div class="p-3 bg-light rounded-3 border">
-                                <div class="d-flex justify-content-between align-items-center mb-2">
-                                    <span class="small fw-bold text-secondary text-uppercase">
-                                        <i class="fa-solid fa-folder-open text-primary me-1"></i> Documentos & Soportes
-                                    </span>
+                        <!-- Bloque 2: Trazabilidad / Pipeline del Proceso -->
+                        <div class="col-xl-3 col-lg-6 col-md-12 border-start-lg ps-lg-4">
+                            <div class="text-uppercase text-muted fw-bold small mb-2"><i class="fa-solid fa-route text-info me-1"></i> Trazabilidad del Flujo:</div>
+                            <div class="d-flex flex-column gap-2">
+                                <div class="d-flex align-items-center justify-content-between p-2 rounded-3 bg-light border">
+                                    <span class="small fw-semibold text-dark"><i class="fa-solid fa-circle-check text-success me-1"></i> 1. Ingreso & Turnero 1</span>
+                                    <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill">Completado</span>
                                 </div>
-                                <div class="d-flex flex-wrap gap-1">
-                                    <?php if (!empty($row['documentos'])): ?>
-                                        <?php foreach ($row['documentos'] as $d): ?>
-                                            <a href="<?= htmlspecialchars($d['ruta_archivo']) ?>" target="_blank" class="btn btn-sm btn-outline-secondary mb-1"><i class="fa-solid fa-file-pdf me-1"></i> <?= htmlspecialchars($d['tipo_documento']) ?></a>
-                                        <?php endforeach; ?>
-                                    <?php endif; ?>
-                                    <?php if (!empty($row['pdf_alistamiento'])): ?>
-                                        <a href="<?= htmlspecialchars($row['pdf_alistamiento']) ?>" target="_blank" class="btn btn-sm btn-outline-success mb-1"><i class="fa-solid fa-boxes-packing me-1"></i> PDF Alistamiento</a>
-                                    <?php endif; ?>
-                                    <?php if (empty($row['documentos']) && empty($row['pdf_alistamiento'])): ?>
-                                        <span class="text-muted small">Sin archivos adjuntos</span>
+                                <div class="d-flex align-items-center justify-content-between p-2 rounded-3 bg-light border">
+                                    <span class="small fw-semibold text-dark"><i class="fa-solid fa-circle-check text-success me-1"></i> 2. Alistamiento & Empaque</span>
+                                    <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill">Listo en Estante</span>
+                                </div>
+                                <div class="d-flex align-items-center justify-content-between p-2 rounded-3 bg-light border" id="step-ventanilla-<?= $row['id'] ?>">
+                                    <span class="small fw-semibold text-dark"><i class="fa-solid <?= $estaLlamado ? 'fa-bell text-success' : ($estaEntregado ? 'fa-circle-check text-success' : 'fa-clock text-warning') ?> me-1"></i> 3. Turnero 2 (Ventanilla)</span>
+                                    <?php if ($estaEntregado): ?>
+                                        <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill">Atendido</span>
+                                    <?php elseif ($estaLlamado): ?>
+                                        <span class="badge bg-warning text-dark border border-warning rounded-pill fw-bold">En Atención</span>
+                                    <?php else: ?>
+                                        <span class="badge bg-secondary-subtle text-secondary border rounded-pill">Pendiente Llamar</span>
                                     <?php endif; ?>
                                 </div>
                             </div>
                         </div>
+
+                        <!-- Bloque 3: Soportes Digitales & Faltantes -->
+                        <div class="col-xl-4 col-lg-12 border-start-xl ps-xl-4">
+                            <div class="text-uppercase text-muted fw-bold small mb-2"><i class="fa-solid fa-paperclip text-primary me-1"></i> Soportes Digitales & Faltantes:</div>
+                            <div class="d-flex flex-wrap gap-1 mb-2">
+                                <?php if (!empty($row['documentos'])): ?>
+                                    <?php foreach ($row['documentos'] as $doc): ?>
+                                        <a href="<?= htmlspecialchars($doc['ruta_archivo']) ?>" target="_blank" class="btn btn-sm btn-outline-secondary mb-1 shadow-sm">
+                                            <i class="fa-solid fa-file-pdf text-danger me-1"></i> <?= htmlspecialchars($doc['tipo_documento'] ?? 'DOCUMENTO') ?>
+                                        </a>
+                                    <?php endforeach; ?>
+                                <?php endif; ?>
+                                <?php if (!empty($row['pdf_alistamiento'])): ?>
+                                    <a href="<?= htmlspecialchars($row['pdf_alistamiento']) ?>" target="_blank" class="btn btn-sm btn-outline-success mb-1 shadow-sm fw-bold">
+                                        <i class="fa-solid fa-boxes-packing me-1"></i> PDF Alistamiento
+                                    </a>
+                                <?php endif; ?>
+                                <a href="index.php?page=imprimir_orden_unificada&id=<?= $row['id'] ?>&auto_print=1" target="_blank" class="btn btn-sm btn-outline-primary mb-1 shadow-sm fw-bold" title="Reimprimir Orden Unificada + Tiquete">
+                                    <i class="fa-solid fa-print me-1"></i> 🖨️ Orden Unificada
+                                </a>
+                                <?php if (empty($row['documentos']) && empty($row['pdf_alistamiento'])): ?>
+                                    <span class="text-muted small">Sin archivos adjuntos</span>
+                                <?php endif; ?>
+                            </div>
+
+                            <!-- Novedades de Alistamiento / Faltantes -->
+                            <?php if (!empty($row['faltantes_alistamiento'])): ?>
+                                <div class="alert alert-warning py-2 px-3 mb-0 small border-warning border-opacity-50 rounded-3 shadow-sm">
+                                    <i class="fa-solid fa-triangle-exclamation text-warning me-1"></i>
+                                    <strong>Faltantes de Alistamiento:</strong><br>
+                                    <?= nl2br(htmlspecialchars($row['faltantes_alistamiento'])) ?>
+                                </div>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Footer: Acciones Guiadas Paso 1 -> Paso 2 -->
+                <div class="bg-light-subtle p-3 px-4 border-top d-flex flex-wrap justify-content-between align-items-center gap-3">
+                    <div id="guia-estado-<?= $row['id'] ?>">
+                        <?php if ($estaEntregado): ?>
+                            <span class="text-muted"><i class="fa-solid fa-circle-check text-success me-1"></i> Esta orden ya fue entregada y cuenta con acta digital firmada.</span>
+                        <?php elseif ($estaLlamado): ?>
+                            <span class="text-success fw-bold"><i class="fa-solid fa-circle-check me-1"></i> Paciente llamado a <?= htmlspecialchars($row['modulo_entrega_asignado'] ?? 'Ventanilla') ?>. Listo para gestionar y firmar.</span>
+                        <?php else: ?>
+                            <span class="text-danger fw-bold"><i class="fa-solid fa-lock text-danger me-1"></i> <strong>Paso 1 Obligatorio:</strong> Primero debe llamar al paciente a Turnero 2 para desbloquear la entrega.</span>
+                        <?php endif; ?>
                     </div>
 
-                    <!-- Sequential Action Buttons Footer -->
-                    <div class="mt-4 pt-3 border-top d-flex flex-wrap justify-content-between align-items-center gap-3">
-                        <div class="small" id="guia-estado-<?= $row['id'] ?>">
-                            <?php if ($estaEntregado): ?>
-                                <span class="text-muted"><i class="fa-solid fa-circle-check text-success me-1"></i> Esta orden ya fue entregada y cuenta con acta digital firmada.</span>
-                            <?php elseif ($enProcesoPrevio): ?>
-                                <span class="text-warning-emphasis fw-bold"><i class="fa-solid fa-circle-info me-1"></i> Esta orden aún se encuentra en etapa interna de preparación (<strong><?= htmlspecialchars($estado) ?></strong>). No está lista para entregar.</span>
-                            <?php elseif ($estaLlamado): ?>
-                                <span class="text-success fw-bold"><i class="fa-solid fa-circle-check me-1"></i> Paciente llamado a <?= htmlspecialchars($row['modulo_entrega_asignado'] ?? 'Ventanilla') ?>. Listo para gestionar y firmar.</span>
-                            <?php else: ?>
-                                <span class="text-warning-emphasis fw-bold"><i class="fa-solid fa-triangle-exclamation me-1"></i> <strong>Paso 1 Obligatorio:</strong> Debe llamar al paciente al Turnero 2 para habilitar la entrega.</span>
-                            <?php endif; ?>
-                        </div>
-
-                        <div class="d-flex flex-wrap gap-2" id="acciones-orden-<?= $row['id'] ?>">
-                            <?php if ($estaEntregado): ?>
-                                <a href="index.php?page=imprimir_acta&id=<?= $row['id'] ?>" target="_blank" class="btn btn-outline-success btn-lg fw-bold px-4 shadow-sm">
-                                    <i class="fa-solid fa-print me-2"></i> Ver Acta Firmada + PDFs
-                                </a>
-                            <?php elseif ($enProcesoPrevio): ?>
-                                <button type="button" class="btn btn-secondary btn-lg fw-semibold px-4 shadow-sm opacity-75" disabled>
-                                    <i class="fa-solid fa-clock me-2"></i> En Proceso: <?= htmlspecialchars($estado) ?>
-                                </button>
-                            <?php elseif ($estaLlamado): ?>
-                                <button type="button" 
-                                        class="btn btn-outline-warning btn-lg fw-bold text-dark px-3 shadow-sm"
-                                        id="btn-llamar-<?= $row['id'] ?>"
-                                        onclick="llamarTurnoATurnero(<?= $row['id'] ?>, '<?= htmlspecialchars($row['ticket_numero']) ?>')">
-                                    <i class="fa-solid fa-volume-high me-1"></i> 🔁 Re-llamar
-                                </button>
-                                <button type="button" 
-                                        class="btn btn-success btn-lg fw-bold text-white px-4 shadow-sm"
-                                        id="btn-gestionar-<?= $row['id'] ?>"
-                                        onclick="abrirModalFirmaPorId(<?= $row['id'] ?>)">
-                                    <i class="fa-solid fa-signature me-2"></i> ✍️ Gestionar Entrega & Firma
-                                </button>
-                            <?php else: ?>
-                                <button type="button" 
-                                        class="btn btn-warning btn-lg fw-bold text-dark px-4 shadow-sm"
-                                        id="btn-llamar-<?= $row['id'] ?>"
-                                        onclick="llamarTurnoATurnero(<?= $row['id'] ?>, '<?= htmlspecialchars($row['ticket_numero']) ?>')">
-                                    <i class="fa-solid fa-bullhorn me-2"></i> 📢 Paso 1: Llamar a Turnero 2 a <span class="badge bg-dark text-warning ms-1 lbl-mi-modulo"><?= htmlspecialchars($modModel->getActivos()[0]['nombre'] ?? 'MÓDULO 1') ?></span>
-                                </button>
-                                <button type="button" 
-                                        class="btn btn-secondary btn-lg fw-bold px-4 shadow-sm opacity-50"
-                                        id="btn-gestionar-<?= $row['id'] ?>"
-                                        disabled
-                                        title="Primero debe llamar al paciente a su ventanilla">
-                                    <i class="fa-solid fa-lock me-2"></i> ✍️ Paso 2: Gestionar Entrega & Firma
-                                </button>
-                            <?php endif; ?>
-                        </div>
+                    <div class="d-flex flex-wrap gap-2 align-items-center" id="acciones-orden-<?= $row['id'] ?>">
+                        <?php if ($estaEntregado): ?>
+                            <a href="index.php?page=imprimir_acta&id=<?= $row['id'] ?>" target="_blank" class="btn btn-outline-success btn-lg fw-bold px-4 shadow-sm">
+                                <i class="fa-solid fa-print me-2"></i> Ver Acta Firmada + PDFs
+                            </a>
+                        <?php elseif ($estaLlamado): ?>
+                            <button type="button" 
+                                    class="btn btn-outline-warning btn-lg fw-bold text-dark px-3 shadow-sm"
+                                    id="btn-llamar-<?= $row['id'] ?>"
+                                    onclick="llamarTurnoATurnero(<?= $row['id'] ?>, '<?= htmlspecialchars($row['ticket_numero']) ?>')">
+                                <i class="fa-solid fa-volume-high me-1"></i> 🔁 Re-llamar a Turnero 2
+                            </button>
+                            <button type="button" 
+                                    class="btn btn-success btn-lg fw-bold text-white px-4 shadow-sm btn-gestionar-entrega-modal"
+                                    id="btn-gestionar-<?= $row['id'] ?>"
+                                    data-id="<?= $row['id'] ?>"
+                                    onclick='abrirModalFirmaDirecto(<?= json_encode($row, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_UNESCAPED_UNICODE) ?>)'>
+                                <i class="fa-solid fa-signature me-2"></i> ✍️ Paso 2: Gestionar Entrega & Firma
+                            </button>
+                        <?php else: ?>
+                            <button type="button" 
+                                    class="btn btn-warning btn-lg fw-bold text-dark px-4 shadow-sm"
+                                    id="btn-llamar-<?= $row['id'] ?>"
+                                    onclick="llamarTurnoATurnero(<?= $row['id'] ?>, '<?= htmlspecialchars($row['ticket_numero']) ?>')">
+                                <i class="fa-solid fa-bullhorn me-2"></i> 📢 Paso 1: Llamar a Turnero 2 a <span class="badge bg-dark text-warning ms-1 lbl-mi-modulo"><?= htmlspecialchars($modModel->getActivos()[0]['nombre'] ?? 'MÓDULO 1') ?></span>
+                            </button>
+                            <button type="button" 
+                                    class="btn btn-secondary btn-lg fw-bold px-4 shadow-sm opacity-50 pe-none"
+                                    id="btn-gestionar-<?= $row['id'] ?>"
+                                    disabled
+                                    title="Debe llamar al paciente primero para habilitar este botón">
+                                <i class="fa-solid fa-lock me-2"></i> 🔒 Paso 2: Gestionar Entrega & Firma
+                            </button>
+                        <?php endif; ?>
                     </div>
                 </div>
             </div>
@@ -509,13 +544,13 @@ require_once __DIR__ . '/../layouts/header.php';
                                 </div>
                             </div>
                             <div class="col-md-6">
-                                <button type="button" class="btn btn-outline-primary btn-sm w-100 mb-2 fw-bold" id="btnIniciarCamaraPaciente">
+                                <button type="button" class="btn btn-outline-primary btn-sm w-100 mb-2 fw-bold" id="btnIniciarCamaraPaciente" onclick="iniciarCamaraPaciente()">
                                     <i class="fa-solid fa-video me-1"></i> Activar Cámara Web
                                 </button>
-                                <button type="button" class="btn btn-warning btn-sm w-100 mb-2 fw-bold text-dark d-none" id="btnTomarFotoPaciente">
+                                <button type="button" class="btn btn-warning btn-sm w-100 mb-2 fw-bold text-dark d-none" id="btnTomarFotoPaciente" onclick="tomarFotoPaciente()">
                                     <i class="fa-solid fa-camera me-1"></i> 📸 Capturar Foto
                                 </button>
-                                <button type="button" class="btn btn-outline-secondary btn-sm w-100 mb-2 d-none" id="btnRepetirFotoPaciente">
+                                <button type="button" class="btn btn-outline-secondary btn-sm w-100 mb-2 d-none" id="btnRepetirFotoPaciente" onclick="repetirFotoPaciente()">
                                     <i class="fa-solid fa-rotate-right me-1"></i> Repetir Foto
                                 </button>
 
@@ -560,7 +595,7 @@ require_once __DIR__ . '/../layouts/header.php';
                     </div>
 
                     <div class="d-flex justify-content-between align-items-center">
-                        <button type="button" class="btn btn-outline-danger btn-sm" id="btnLimpiarFirma">
+                        <button type="button" class="btn btn-outline-danger btn-sm" id="btnLimpiarFirma" onclick="limpiarCanvas()">
                             <i class="fa-solid fa-eraser me-1"></i> Borrar Firma en Pantalla
                         </button>
                         <span class="small text-muted"><i class="fa-solid fa-tablet-screen-button me-1"></i> Compatible con Topaz SigLite (T-S460), Wacom, iPad y pantallas táctiles</span>
@@ -619,24 +654,33 @@ require_once __DIR__ . '/../layouts/header.php';
                     </li>
                     <li class="list-group-item py-3">
                         <div class="ms-2">
-                            <div class="fw-bold">3. Reconocimiento de certificado seguro (HTTPS)</div>
-                            Si su sistema usa conexión segura (HTTPS), abra el siguiente enlace de prueba en una pestaña nueva:
-                            <div class="mt-2">
-                                <a href="https://tablet.sigwebtablet.com:47290/SigWeb/GetDaysUntilCertificateExpires" target="_blank" class="badge bg-dark text-white p-2 text-decoration-none me-2">
-                                    <i class="fa-solid fa-arrow-up-right-from-square me-1"></i> Probar Puerto Seguro 47290
-                                </a>
-                                <a href="https://tablet.sigwebtablet.com:47289/SigWeb/GetDaysUntilCertificateExpires" target="_blank" class="badge bg-secondary text-white p-2 text-decoration-none">
-                                    <i class="fa-solid fa-arrow-up-right-from-square me-1"></i> Probar Puerto 47289
-                                </a>
-                            </div>
-                            <small class="text-muted d-block mt-1">Si el navegador muestra advertencia de certificado local, haga clic en <em>"Avanzado"</em> y luego en <em>"Continuar a tablet.sigwebtablet.com (seguro)"</em>.</small>
+                            <div class="fw-bold">3. Actualizar Certificado de Seguridad (Solución a ERR_SSL_PROTOCOL_ERROR)</div>
+                            Topaz requiere un certificado local para HTTPS (Puerto 47290). Si el navegador muestra error SSL:
+                            <ol class="mt-2">
+                                <li>Presione <kbd>Win + R</kbd>, escriba <code>services.msc</code> y verifique que el servicio <strong>Topaz SigWeb Tablet Service</strong> esté en estado <em>En ejecución</em> (Running).</li>
+                                <li>Descargue y ejecute el actualizador de certificados oficial:
+                                    <div class="mt-2 mb-2">
+                                        <a href="https://www.topazsystems.com/software/sigweb_update_Cert.exe" target="_blank" class="btn btn-sm btn-outline-primary fw-bold">
+                                            <i class="fa-solid fa-certificate me-1"></i> Descargar SigWeb Certificate Updater (.exe)
+                                        </a>
+                                    </div>
+                                </li>
+                                <li>Pruebe la conexión segura al puerto 47290:
+                                    <div class="mt-1">
+                                        <a href="https://tablet.sigwebtablet.com:47290/SigWeb/GetDaysUntilCertificateExpires" target="_blank" class="badge bg-success p-2 text-decoration-none">
+                                            <i class="fa-solid fa-shield-halved me-1"></i> Probar Puerto Seguro 47290 (HTTPS)
+                                        </a>
+                                    </div>
+                                    <small class="text-muted d-block mt-1">Si Chrome o Edge le solicita permiso de <strong>"Acceso a la Red Local" (Local Network Access)</strong>, haga clic en <strong>"Permitir"</strong>.</small>
+                                </li>
+                            </ol>
                         </div>
                     </li>
                 </ol>
 
                 <div class="bg-light p-3 rounded-3 border">
                     <p class="mb-0 small text-muted">
-                        <i class="fa-solid fa-lightbulb text-warning me-1"></i> <strong>Nota:</strong> Mientras realiza la instalación de SigWeb, el paciente puede firmar directamente en la pantalla con el ratón o pantalla táctil en el recuadro digital de SISPAM.
+                        <i class="fa-solid fa-lightbulb text-warning me-1"></i> <strong>Firma alternativa:</strong> Mientras configura la tableta Topaz, el paciente puede firmar inmediatamente en pantalla táctil o con el ratón en el recuadro de firma digital.
                     </p>
                 </div>
             </div>
@@ -648,6 +692,8 @@ require_once __DIR__ . '/../layouts/header.php';
 </div>
 <!-- PDF.js Engine para Extracción de Texto de Fórmulas y Comprobantes -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+<!-- Topaz SigWebTablet SDK Oficial -->
+<script src="assets/js/SigWebTablet.js?v=<?= time() ?>"></script>
 <script>
     if (typeof pdfjsLib !== 'undefined') {
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
@@ -658,6 +704,11 @@ require_once __DIR__ . '/../layouts/header.php';
 let canvas, ctx, isDrawing = false;
 let videoStreamPaciente = null;
 let currentPacienteData = null;
+let currentOrderTranscripcionTexto = '';
+let currentOrderTicket = '';
+let currentOrderPdfTranscripcion = '';
+let currentOrderPdfAlistamiento = '';
+window.pacientesEncontradosCache = window.pacientesEncontradosCache || {};
 
 document.addEventListener('DOMContentLoaded', () => {
     // Mover modal directamente a document.body para evitar que el backdrop quede encima
@@ -696,25 +747,50 @@ document.addEventListener('DOMContentLoaded', () => {
     canvas.addEventListener('touchmove', (e) => { e.preventDefault(); draw(e.touches[0]); });
     canvas.addEventListener('touchend', stopDrawing);
 
-    document.getElementById('btnLimpiarFirma').addEventListener('click', limpiarCanvas);
+    const btnLimpiar = document.getElementById('btnLimpiarFirma');
+    if (btnLimpiar) btnLimpiar.addEventListener('click', limpiarCanvas);
 
     // Lógica de Cámara Web Paciente
-    document.getElementById('btnIniciarCamaraPaciente').addEventListener('click', iniciarCamaraPaciente);
-    document.getElementById('btnTomarFotoPaciente').addEventListener('click', tomarFotoPaciente);
-    document.getElementById('btnRepetirFotoPaciente').addEventListener('click', repetirFotoPaciente);
+    const btnIniciarCam = document.getElementById('btnIniciarCamaraPaciente');
+    if (btnIniciarCam) btnIniciarCam.addEventListener('click', iniciarCamaraPaciente);
+    const btnTomarFoto = document.getElementById('btnTomarFotoPaciente');
+    if (btnTomarFoto) btnTomarFoto.addEventListener('click', tomarFotoPaciente);
+    const btnRepetirFoto = document.getElementById('btnRepetirFotoPaciente');
+    if (btnRepetirFoto) btnRepetirFoto.addEventListener('click', repetirFotoPaciente);
 
-    document.getElementById('formEntregaFirma').addEventListener('submit', (e) => {
-        if (isCanvasBlank(canvas)) {
-            alert('Por favor solicite al paciente realizar la firma en la pantalla antes de finalizar.');
-            e.preventDefault();
-            return;
-        }
-        document.getElementById('firma_base64').value = canvas.toDataURL('image/png');
-        detenerCamaraPaciente();
-    });
+    const formEntrega = document.getElementById('formEntregaFirma');
+    if (formEntrega) {
+        formEntrega.addEventListener('submit', (e) => {
+            const fInput = document.getElementById('firma_base64');
+            
+            // Si el canvas no está en blanco, guardar trazo actual
+            if (canvas && !isCanvasBlank(canvas)) {
+                if (fInput) fInput.value = canvas.toDataURL('image/png');
+            }
+            
+            // Validar que exista una firma válida
+            if (!fInput || !fInput.value || fInput.value.length < 50) {
+                alert('Por favor solicite al paciente realizar la firma en la tableta Topaz o en la pantalla antes de finalizar.');
+                e.preventDefault();
+                return;
+            }
+            
+            if (typeof SetTabletState === 'function') {
+                try { SetTabletState(0); } catch(err) {}
+            }
+            detenerCamaraPaciente();
+        });
+    }
 
-    // Delegación de eventos para el botón de entrega
+    // Delegación de eventos para el botón de entrega y gestión
     document.addEventListener('click', function(e) {
+        const btnGestionar = e.target.closest('.btn-gestionar-entrega-modal');
+        if (btnGestionar) {
+            const id = btnGestionar.getAttribute('data-id');
+            if (id) {
+                abrirModalFirmaPorId(id);
+            }
+        }
         const btn = e.target.closest('.btn-abrir-firma');
         if (btn) {
             const id = btn.getAttribute('data-id');
@@ -844,11 +920,13 @@ function renderizarResultadosEntrega(lista) {
         let estadoBadge = '';
         let guiaFlujoHtml = '';
         let botonesAccionHtml = '';
+        let stepVentanillaBadge = '';
 
         if (estaEntregado) {
             headerBgClass = 'bg-secondary';
-            estadoBadge = `<span class="badge bg-dark text-white px-3 py-2 rounded-pill shadow-sm fw-bold"><i class="fa-solid fa-check-double me-1"></i> Entregado & Finalizado</span>`;
+            estadoBadge = `<span class="badge bg-dark text-white px-3 py-2 rounded-pill shadow-sm fw-bold"><i class="fa-solid fa-check-double text-success me-1"></i> Entregado & Finalizado</span>`;
             guiaFlujoHtml = `<span class="text-muted"><i class="fa-solid fa-circle-check text-success me-1"></i> Esta orden ya fue entregada y cuenta con acta digital firmada.</span>`;
+            stepVentanillaBadge = `<span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill">Atendido</span>`;
             botonesAccionHtml = `
                 <a href="index.php?page=imprimir_acta&id=${row.id}" target="_blank" class="btn btn-outline-success btn-lg fw-bold px-4 shadow-sm">
                     <i class="fa-solid fa-print me-2"></i> Ver Acta Firmada + PDFs
@@ -858,24 +936,27 @@ function renderizarResultadosEntrega(lista) {
             headerBgClass = 'bg-success';
             estadoBadge = `<span class="badge bg-white text-success px-3 py-2 rounded-pill shadow-sm fw-bold"><i class="fa-solid fa-bell me-1"></i> Llamado Activo en ${escapeHtml(row.modulo_entrega_asignado || miModulo)}</span>`;
             guiaFlujoHtml = `<span class="text-success fw-bold"><i class="fa-solid fa-circle-check me-1"></i> Paciente llamado a ${escapeHtml(row.modulo_entrega_asignado || miModulo)}. Listo para gestionar y firmar.</span>`;
+            stepVentanillaBadge = `<span class="badge bg-warning text-dark border border-warning rounded-pill fw-bold">En Atención</span>`;
             botonesAccionHtml = `
                 <button type="button" 
                         class="btn btn-outline-warning btn-lg fw-bold text-dark px-3 shadow-sm"
                         id="btn-llamar-${row.id}"
                         onclick="llamarTurnoATurnero(${row.id}, '${escapeHtml(row.ticket_numero)}')">
-                    <i class="fa-solid fa-volume-high me-1"></i> 🔁 Re-llamar
+                    <i class="fa-solid fa-volume-high me-1"></i> 🔁 Re-llamar a Turnero 2
                 </button>
                 <button type="button" 
-                        class="btn btn-success btn-lg fw-bold text-white px-4 shadow-sm"
+                        class="btn btn-success btn-lg fw-bold text-white px-4 shadow-sm btn-gestionar-entrega-modal"
                         id="btn-gestionar-${row.id}"
+                        data-id="${row.id}"
                         onclick="abrirModalFirmaPorId(${row.id})">
-                    <i class="fa-solid fa-signature me-2"></i> ✍️ Gestionar Entrega & Firma
+                    <i class="fa-solid fa-signature me-2"></i> ✍️ Paso 2: Gestionar Entrega & Firma
                 </button>
             `;
         } else {
             headerBgClass = 'bg-primary';
             estadoBadge = `<span class="badge bg-warning text-dark px-3 py-2 rounded-pill shadow-sm fw-bold"><i class="fa-solid fa-box-archive me-1"></i> Paquete en Estante (Pendiente de Llamar)</span>`;
-            guiaFlujoHtml = `<span class="text-warning-emphasis fw-bold"><i class="fa-solid fa-triangle-exclamation me-1"></i> <strong>Paso 1 Obligatorio:</strong> Debe llamar al paciente al Turnero 2 para habilitar la entrega.</span>`;
+            guiaFlujoHtml = `<span class="text-danger fw-bold"><i class="fa-solid fa-lock text-danger me-1"></i> <strong>Paso 1 Obligatorio:</strong> Primero debe llamar al paciente a Turnero 2 para desbloquear la entrega.</span>`;
+            stepVentanillaBadge = `<span class="badge bg-secondary-subtle text-secondary border rounded-pill">Pendiente Llamar</span>`;
             botonesAccionHtml = `
                 <button type="button" 
                         class="btn btn-warning btn-lg fw-bold text-dark px-4 shadow-sm"
@@ -884,11 +965,11 @@ function renderizarResultadosEntrega(lista) {
                     <i class="fa-solid fa-bullhorn me-2"></i> 📢 Paso 1: Llamar a Turnero 2 a <span class="badge bg-dark text-warning ms-1 lbl-mi-modulo">${escapeHtml(miModulo)}</span>
                 </button>
                 <button type="button" 
-                        class="btn btn-secondary btn-lg fw-bold px-4 shadow-sm opacity-50"
+                        class="btn btn-secondary btn-lg fw-bold px-4 shadow-sm opacity-50 pe-none"
                         id="btn-gestionar-${row.id}"
                         disabled
-                        title="Primero debe llamar al paciente a su ventanilla">
-                    <i class="fa-solid fa-lock me-2"></i> ✍️ Paso 2: Gestionar Entrega & Firma
+                        title="Debe llamar al paciente primero para habilitar este botón">
+                    <i class="fa-solid fa-lock me-2"></i> 🔒 Paso 2: Gestionar Entrega & Firma
                 </button>
             `;
         }
@@ -896,58 +977,71 @@ function renderizarResultadosEntrega(lista) {
         let docsHtml = '';
         if (row.documentos && row.documentos.length > 0) {
             row.documentos.forEach(d => {
-                docsHtml += `<a href="${escapeHtml(d.ruta_archivo)}" target="_blank" class="btn btn-sm btn-outline-secondary mb-1 me-1"><i class="fa-solid fa-file-pdf me-1"></i> ${escapeHtml(d.tipo_documento)}</a>`;
+                docsHtml += `<a href="${escapeHtml(d.ruta_archivo)}" target="_blank" class="btn btn-sm btn-outline-secondary mb-1 shadow-sm"><i class="fa-solid fa-file-pdf text-danger me-1"></i> ${escapeHtml(d.tipo_documento)}</a> `;
             });
         }
         if (row.pdf_alistamiento) {
-            docsHtml += `<a href="${escapeHtml(row.pdf_alistamiento)}" target="_blank" class="btn btn-sm btn-outline-success mb-1 me-1"><i class="fa-solid fa-boxes-packing me-1"></i> PDF Alistamiento</a>`;
+            docsHtml += `<a href="${escapeHtml(row.pdf_alistamiento)}" target="_blank" class="btn btn-sm btn-outline-success mb-1 shadow-sm fw-bold"><i class="fa-solid fa-boxes-packing me-1"></i> PDF Alistamiento</a> `;
         }
+        docsHtml += `<a href="index.php?page=imprimir_orden_unificada&id=${row.id}&auto_print=1" target="_blank" class="btn btn-sm btn-outline-primary mb-1 shadow-sm fw-bold" title="Reimprimir Orden Unificada + Tiquete"><i class="fa-solid fa-print me-1"></i> 🖨️ Orden Unificada</a> `;
         if (!docsHtml) {
             docsHtml = '<span class="text-muted small">Sin archivos adjuntos</span>';
+        }
+
+        let faltantesHtml = '';
+        if (row.faltantes_alistamiento && row.faltantes_alistamiento.trim()) {
+            faltantesHtml = `
+                <div class="alert alert-warning py-2 px-3 mb-0 small border-warning border-opacity-50 rounded-3 shadow-sm">
+                    <i class="fa-solid fa-triangle-exclamation text-warning me-1"></i>
+                    <strong>Faltantes de Alistamiento:</strong><br>
+                    ${escapeHtml(row.faltantes_alistamiento).replace(/\\n/g, '<br>')}
+                </div>
+            `;
         }
 
         const fechaStr = row.created_at || '';
 
         html += `
-            <div class="card border-0 shadow-lg rounded-4 overflow-hidden mb-4 bg-white" id="card-orden-${row.id}">
-                <!-- Header -->
+            <div class="card border-0 shadow-lg rounded-4 overflow-hidden mb-4 bg-white hover-shadow-lg transition-all" id="card-orden-${row.id}">
+                <!-- Header Moderno con Gradiente Elegante -->
                 <div class="p-3 px-4 d-flex flex-wrap justify-content-between align-items-center ${headerBgClass} bg-gradient text-white" id="card-header-${row.id}">
                     <div class="d-flex align-items-center gap-2 flex-wrap">
-                        <span class="bg-white text-dark fw-bold font-monospace px-3 py-1 rounded-pill shadow-sm fs-5">
-                            <i class="fa-solid fa-receipt text-primary me-1"></i> ${escapeHtml(row.ticket_numero)}
+                        <span class="bg-white text-dark fw-bold font-monospace px-3 py-1 rounded-pill shadow-sm fs-5 d-inline-flex align-items-center">
+                            <i class="fa-solid fa-receipt text-primary me-2"></i> ${escapeHtml(row.ticket_numero)}
                         </span>
                         <span class="badge bg-light text-dark border px-3 py-2 rounded-pill fw-bold shadow-sm">
-                            <i class="fa-solid fa-location-dot text-warning me-1"></i> ${escapeHtml(row.nombre_sede || 'Sede Principal')}
+                            <i class="fa-solid fa-building text-warning me-1"></i> ${escapeHtml(row.nombre_sede || 'Sede Principal')}
                         </span>
                         ${badgePrio}
-                        <span class="badge bg-black bg-opacity-25 rounded-pill px-3 py-1 small">
+                        <span class="badge bg-black bg-opacity-25 rounded-pill px-3 py-2 small">
                             <i class="fa-solid fa-clock me-1"></i> ${escapeHtml(fechaStr)}
                         </span>
                     </div>
                     <div id="badge-estado-${row.id}">${estadoBadge}</div>
                 </div>
 
-                <!-- Body -->
-                <div class="p-4">
-                    <div class="row g-4 align-items-center">
-                        <!-- Patient Info -->
-                        <div class="col-lg-7 col-md-12">
+                <!-- Body Moderno con Grid de 3 Secciones -->
+                <div class="p-4 bg-white">
+                    <div class="row g-4">
+                        <!-- Bloque 1: Datos del Paciente -->
+                        <div class="col-xl-5 col-lg-6 col-md-12">
                             <div class="d-flex align-items-start gap-3">
-                                <div class="p-3 bg-primary bg-opacity-10 text-primary rounded-circle d-none d-sm-flex align-items-center justify-content-center shadow-sm" style="width: 54px; height: 54px;">
-                                    <i class="fa-solid fa-user-check fs-4"></i>
+                                <div class="p-3 bg-primary bg-opacity-10 text-primary rounded-circle d-none d-sm-flex align-items-center justify-content-center shadow-sm flex-shrink-0" style="width: 58px; height: 58px;">
+                                    <i class="fa-solid fa-user-check fs-3"></i>
                                 </div>
                                 <div class="flex-grow-1">
-                                    <h4 class="fw-bold text-dark mb-1">
+                                    <div class="text-uppercase text-muted fw-bold small mb-1">Información del Paciente:</div>
+                                    <h4 class="fw-bold text-dark mb-2 fs-5">
                                         ${escapeHtml(row.nombres + ' ' + row.apellidos)}
                                     </h4>
                                     <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
-                                        <span class="badge bg-light text-dark border px-2 py-1">
-                                            <i class="fa-solid fa-id-card text-muted me-1"></i> ${escapeHtml(row.tipo_documento)} ${escapeHtml(row.numero_documento)}
+                                        <span class="badge bg-light text-dark border px-2 py-1 fs-6 fw-bold">
+                                            <i class="fa-solid fa-id-card text-primary me-1"></i> ${escapeHtml(row.tipo_documento)} ${escapeHtml(row.numero_documento)}
                                         </span>
                                         <span class="badge bg-info bg-opacity-10 text-info border border-info border-opacity-25 px-2 py-1 fw-bold">
                                             <i class="fa-solid fa-hospital me-1"></i> ${escapeHtml(row.eps_nombre || 'Savia Salud')}
                                         </span>
-                                        ${row.telefono ? `<span class="text-muted small"><i class="fa-solid fa-phone text-muted me-1"></i> ${escapeHtml(row.telefono)}</span>` : ''}
+                                        ${row.telefono ? `<a href="tel:${escapeHtml(row.telefono)}" class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25 px-2 py-1 text-decoration-none fw-bold"><i class="fa-solid fa-phone me-1"></i> ${escapeHtml(row.telefono)}</a>` : ''}
                                     </div>
                                     <div class="text-muted small">
                                         <i class="fa-solid fa-location-dot text-danger me-1"></i> ${escapeHtml(row.direccion_residencia || 'Dirección no registrada')} ${row.ciudad_residencia ? `• ${escapeHtml(row.ciudad_residencia)}` : ''}
@@ -956,30 +1050,44 @@ function renderizarResultadosEntrega(lista) {
                             </div>
                         </div>
 
-                        <!-- Documents -->
-                        <div class="col-lg-5 col-md-12 border-start-lg ps-lg-4">
-                            <div class="p-3 bg-light rounded-3 border">
-                                <div class="d-flex justify-content-between align-items-center mb-2">
-                                    <span class="small fw-bold text-secondary text-uppercase">
-                                        <i class="fa-solid fa-folder-open text-primary me-1"></i> Documentos & Soportes
-                                    </span>
+                        <!-- Bloque 2: Trazabilidad / Pipeline del Proceso -->
+                        <div class="col-xl-3 col-lg-6 col-md-12 border-start-lg ps-lg-4">
+                            <div class="text-uppercase text-muted fw-bold small mb-2"><i class="fa-solid fa-route text-info me-1"></i> Trazabilidad del Flujo:</div>
+                            <div class="d-flex flex-column gap-2">
+                                <div class="d-flex align-items-center justify-content-between p-2 rounded-3 bg-light border">
+                                    <span class="small fw-semibold text-dark"><i class="fa-solid fa-circle-check text-success me-1"></i> 1. Ingreso & Turnero 1</span>
+                                    <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill">Completado</span>
                                 </div>
-                                <div class="d-flex flex-wrap gap-1">
-                                    ${docsHtml}
+                                <div class="d-flex align-items-center justify-content-between p-2 rounded-3 bg-light border">
+                                    <span class="small fw-semibold text-dark"><i class="fa-solid fa-circle-check text-success me-1"></i> 2. Alistamiento & Empaque</span>
+                                    <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill">Listo en Estante</span>
+                                </div>
+                                <div class="d-flex align-items-center justify-content-between p-2 rounded-3 bg-light border" id="step-ventanilla-${row.id}">
+                                    <span class="small fw-semibold text-dark"><i class="fa-solid ${estaLlamado ? 'fa-bell text-success' : (estaEntregado ? 'fa-circle-check text-success' : 'fa-clock text-warning')} me-1"></i> 3. Turnero 2 (Ventanilla)</span>
+                                    ${stepVentanillaBadge}
                                 </div>
                             </div>
                         </div>
+
+                        <!-- Bloque 3: Soportes Digitales & Faltantes -->
+                        <div class="col-xl-4 col-lg-12 border-start-xl ps-xl-4">
+                            <div class="text-uppercase text-muted fw-bold small mb-2"><i class="fa-solid fa-paperclip text-primary me-1"></i> Soportes Digitales & Faltantes:</div>
+                            <div class="d-flex flex-wrap gap-1 mb-2">
+                                ${docsHtml}
+                            </div>
+                            ${faltantesHtml}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Footer: Acciones Guiadas Paso 1 -> Paso 2 -->
+                <div class="bg-light-subtle p-3 px-4 border-top d-flex flex-wrap justify-content-between align-items-center gap-3">
+                    <div id="guia-estado-${row.id}">
+                        ${guiaFlujoHtml}
                     </div>
 
-                    <!-- Sequential Action Buttons Footer -->
-                    <div class="mt-4 pt-3 border-top d-flex flex-wrap justify-content-between align-items-center gap-3">
-                        <div class="small" id="guia-estado-${row.id}">
-                            ${guiaFlujoHtml}
-                        </div>
-
-                        <div class="d-flex flex-wrap gap-2" id="acciones-orden-${row.id}">
-                            ${botonesAccionHtml}
-                        </div>
+                    <div class="d-flex flex-wrap gap-2 align-items-center" id="acciones-orden-${row.id}">
+                        ${botonesAccionHtml}
                     </div>
                 </div>
             </div>
@@ -992,6 +1100,18 @@ function renderizarResultadosEntrega(lista) {
 function abrirModalFirmaPorId(id) {
     if (window.pacientesEncontradosCache && window.pacientesEncontradosCache[id]) {
         abrirModalFirmaDirecto(window.pacientesEncontradosCache[id]);
+    } else {
+        const card = document.getElementById('card-orden-' + id);
+        if (card) {
+            const ticket = card.querySelector('.font-monospace')?.textContent?.trim() || '';
+            const paciente = card.querySelector('h4')?.textContent?.trim() || '';
+            abrirModalFirmaDirecto({
+                id: id,
+                ticket_numero: ticket,
+                nombres: paciente,
+                apellidos: ''
+            });
+        }
     }
 }
 
@@ -1041,6 +1161,11 @@ function llamarTurnoATurnero(id, ticket) {
                     badgeEstado.innerHTML = `<span class="badge bg-white text-success px-3 py-2 rounded-pill shadow-sm fw-bold"><i class="fa-solid fa-bell me-1"></i> Llamado Activo en ${escapeHtml(miModulo)}</span>`;
                 }
 
+                const stepVentanilla = document.getElementById(`step-ventanilla-${id}`);
+                if (stepVentanilla) {
+                    stepVentanilla.innerHTML = `<span class="small fw-semibold text-dark"><i class="fa-solid fa-bell text-success me-1"></i> 3. Turnero 2 (Ventanilla)</span><span class="badge bg-warning text-dark border border-warning rounded-pill fw-bold">En Atención</span>`;
+                }
+
                 const guia = document.getElementById(`guia-estado-${id}`);
                 if (guia) {
                     guia.innerHTML = `<span class="text-success fw-bold"><i class="fa-solid fa-circle-check me-1"></i> Paciente llamado a ${escapeHtml(miModulo)}. Listo para gestionar y firmar.</span>`;
@@ -1053,18 +1178,19 @@ function llamarTurnoATurnero(id, ticket) {
                                 class="btn btn-outline-warning btn-lg fw-bold text-dark px-3 shadow-sm"
                                 id="btn-llamar-${id}"
                                 onclick="llamarTurnoATurnero(${id}, '${escapeHtml(ticket)}')">
-                            <i class="fa-solid fa-volume-high me-1"></i> 🔁 Re-llamar
+                            <i class="fa-solid fa-volume-high me-1"></i> 🔁 Re-llamar a Turnero 2
                         </button>
                         <button type="button" 
-                                class="btn btn-success btn-lg fw-bold text-white px-4 shadow-sm animate__animated animate__pulse"
+                                class="btn btn-success btn-lg fw-bold text-white px-4 shadow-sm btn-gestionar-entrega-modal animate__animated animate__pulse"
                                 id="btn-gestionar-${id}"
+                                data-id="${id}"
                                 onclick="abrirModalFirmaPorId(${id})">
-                            <i class="fa-solid fa-signature me-2"></i> ✍️ Gestionar Entrega & Firma
+                            <i class="fa-solid fa-signature me-2"></i> ✍️ Paso 2: Gestionar Entrega & Firma
                         </button>
                     `;
                 }
 
-                modalAlert(`¡Paciente proyectado en el Turnero 2 y llamado por voz al ${escapeHtml(miModulo)} con éxito!<br><span class="text-muted small">Ya puedes proceder a hacer clic en <strong>Gestionar Entrega & Firma</strong>.</span>`, 'success', 'Llamado a Turnero 2');
+                modalAlert(`¡Paciente proyectado en el Turnero 2 y llamado por voz al ${escapeHtml(miModulo)} con éxito!<br><span class="text-muted small">Ya puedes proceder a hacer clic en <strong>Paso 2: Gestionar Entrega & Firma</strong>.</span>`, 'success', 'Llamado a Turnero 2');
             } else {
                 modalAlert(data.message || 'No se pudo completar el llamado.', 'error', 'Aviso de Turnero');
                 if (btnLlamar) {
@@ -1085,6 +1211,10 @@ function llamarTurnoATurnero(id, ticket) {
 }
 
 function abrirModalFirmaDirecto(row) {
+    if (!row) {
+        console.error("abrirModalFirmaDirecto: fila no definida");
+        return;
+    }
     currentPacienteData = row;
     currentOrderTicket = row.ticket_numero || '';
     currentOrderPdfTranscripcion = row.pdf_transcripcion_url || '';
@@ -1104,34 +1234,64 @@ function abrirModalFirmaDirecto(row) {
         }
     }
 
-    document.getElementById('entrega_ingreso_id').value = row.id;
-    document.getElementById('entrega_ticket_txt').innerText = row.ticket_numero || '-';
-    document.getElementById('entrega_paciente_txt').innerText = (row.nombres || '') + ' ' + (row.apellidos || '');
-    document.getElementById('entrega_doc_txt').innerText = (row.tipo_documento || '') + ' ' + (row.numero_documento || '');
-    const elSede = document.getElementById('entrega_sede_txt');
-    if (elSede) elSede.innerText = row.nombre_sede || 'Sede Principal';
+    const setTxt = (id, val) => {
+        const el = document.getElementById(id);
+        if (el) el.innerText = val;
+    };
+    const setVal = (id, val) => {
+        const el = document.getElementById(id);
+        if (el) el.value = val;
+    };
 
-    document.getElementById('faltantes_alistamiento_entrega').value = row.faltantes_alistamiento || '';
+    setVal('entrega_ingreso_id', row.id || '');
+    setTxt('entrega_ticket_txt', row.ticket_numero || '-');
+    setTxt('entrega_paciente_txt', (row.nombres || '') + ' ' + (row.apellidos || ''));
+    setTxt('entrega_doc_txt', (row.tipo_documento || '') + ' ' + (row.numero_documento || ''));
+    setTxt('entrega_sede_txt', row.nombre_sede || 'Sede Principal');
+    setVal('faltantes_alistamiento_entrega', row.faltantes_alistamiento || '');
 
     limpiarCanvas();
     detenerCamaraPaciente();
 
     const modalEl = document.getElementById('modalFirmaDigital');
-    if (modalEl && modalEl.parentElement !== document.body) {
-        document.body.appendChild(modalEl);
+    if (modalEl) {
+        if (modalEl.parentElement !== document.body) {
+            document.body.appendChild(modalEl);
+        }
+        try {
+            if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+                modal.show();
+            } else {
+                modalEl.classList.add('show');
+                modalEl.style.display = 'block';
+            }
+        } catch(e) {
+            modalEl.classList.add('show');
+            modalEl.style.display = 'block';
+        }
     }
-    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
-    modal.show();
 
     setTimeout(() => {
+        if (!canvas) {
+            canvas = document.getElementById('canvas-firma');
+            if (canvas) ctx = canvas.getContext('2d');
+        }
         if (canvas) {
             canvas.width = canvas.offsetWidth || 700;
             canvas.height = canvas.offsetHeight || 200;
-            ctx.strokeStyle = "#000000";
-            ctx.lineWidth = 3;
-            ctx.lineCap = "round";
+            if (ctx) {
+                ctx.strokeStyle = "#000000";
+                ctx.lineWidth = 3;
+                ctx.lineCap = "round";
+            }
         }
-    }, 400);
+        if (typeof checkTopazSigWeb === 'function') {
+            if (checkTopazSigWeb()) {
+                activarPadTopaz();
+            }
+        }
+    }, 300);
 }
 
 async function iniciarCamaraPaciente() {
@@ -1240,11 +1400,6 @@ function isCanvasBlank(c) {
     }
 }
 
-let currentOrderTranscripcionTexto = '';
-let currentOrderTicket = '';
-let currentOrderPdfTranscripcion = '';
-let currentOrderPdfAlistamiento = '';
-
 function abrirModalFirma(id, ticket, paciente, doc, faltantes, transcripcion, pdfTranscripcion, pdfAlistamiento) {
     document.getElementById('entrega_ingreso_id').value = id;
     document.getElementById('entrega_ticket_txt').innerText = ticket;
@@ -1293,44 +1448,22 @@ function abrirModalFirma(id, ticket, paciente, doc, faltantes, transcripcion, pd
 // INTEGRACIÓN CON TABLETA DIGITALIZADORA TOPAZ (T-S460)
 // ----------------------------------------------------
 let topazActivo = false;
-let topazWorkingUrl = null;
+let topazTimer = null;
 
-async function checkTopazSigWeb() {
+function checkTopazSigWeb() {
     const badge = document.getElementById('badgeEstadoTopaz');
     const txt = document.getElementById('txtEstadoTopaz');
 
-    // Candidatos oficiales de puertos de Topaz SigWeb (HTTPS / HTTP)
-    const candidateUrls = [
-        'https://tablet.sigwebtablet.com:47290',
-        'https://tablet.sigwebtablet.com:47289',
-        'http://127.0.0.1:47289',
-        'http://localhost:47289'
-    ];
-
-    for (const baseUrl of candidateUrls) {
-        try {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 800);
-            const res = await fetch(baseUrl + '/SigWeb/GetDaysUntilCertificateExpires', {
-                signal: controller.signal,
-                mode: 'cors'
-            }).catch(() => null);
-            clearTimeout(timeoutId);
-
-            if (res && (res.ok || res.status === 200)) {
-                topazWorkingUrl = baseUrl;
-                if (badge) {
-                    badge.className = 'badge bg-success p-2 shadow-sm';
-                    badge.innerHTML = '<i class="fa-solid fa-circle-check me-1"></i> Pad Topaz Listo';
-                }
-                if (txt) txt.textContent = `Conectado (${baseUrl.split(':')[2]} OK)`;
-                return true;
-            }
-        } catch(e) {}
+    const isInstalled = (typeof IsSigWebInstalled === 'function') ? IsSigWebInstalled() : false;
+    if (isInstalled) {
+        if (badge) {
+            badge.className = 'badge bg-success p-2 shadow-sm';
+            badge.innerHTML = '<i class="fa-solid fa-circle-check me-1"></i> Pad Topaz Conectado';
+        }
+        if (txt) txt.textContent = 'Tableta Topaz Lista (47290 OK)';
+        return true;
     }
 
-    // Si no respondió ningún puerto
-    topazWorkingUrl = null;
     if (badge) {
         badge.className = 'badge bg-secondary p-2';
         badge.innerHTML = '<i class="fa-solid fa-tablet-screen-button me-1"></i> Modo Pantalla / Táctil';
@@ -1339,28 +1472,29 @@ async function checkTopazSigWeb() {
     return false;
 }
 
-function getSigWebBaseUrl() {
-    return topazWorkingUrl || 'https://tablet.sigwebtablet.com:47289';
-}
-
-async function activarPadTopaz() {
+function activarPadTopaz() {
     const badge = document.getElementById('badgeEstadoTopaz');
-    if (!topazWorkingUrl) {
-        const ok = await checkTopazSigWeb();
-        if (!ok) {
-            abrirModalAyudaTopaz();
-            return;
-        }
+    if (!checkTopazSigWeb()) {
+        abrirModalAyudaTopaz();
+        return;
     }
 
     try {
-        const base = getSigWebBaseUrl();
-        await fetch(base + '/SigWeb/SetImageXSize?500', { mode: 'cors' });
-        await fetch(base + '/SigWeb/SetImageYSize?200', { mode: 'cors' });
-        await fetch(base + '/SigWeb/SetImagePenWidth?5', { mode: 'cors' });
-        await fetch(base + '/SigWeb/SetImageFileFormat?4', { mode: 'cors' });
-        await fetch(base + '/SigWeb/ClearTablet', { mode: 'cors' });
-        await fetch(base + '/SigWeb/SetTabletState?1', { mode: 'cors' });
+        const cvs = document.getElementById('canvas-firma');
+        const cContext = cvs.getContext('2d');
+        
+        // Resetear y limpiar completamente la memoria del pad antes de empezar
+        if (typeof Reset === 'function') Reset();
+        if (typeof ClearTablet === 'function') ClearTablet();
+        limpiarCanvas();
+
+        SetDisplayTarget(cContext);
+        SetImageXSize(cvs.offsetWidth || 500);
+        SetImageYSize(cvs.offsetHeight || 200);
+        SetImagePenWidth(4);
+        
+        // Activar hardware Topaz y refresco de tinta en vivo a 50ms
+        topazTimer = SetTabletState(1, cContext, 50);
         topazActivo = true;
 
         if (badge) {
@@ -1368,61 +1502,84 @@ async function activarPadTopaz() {
             badge.innerHTML = '<i class="fa-solid fa-pen-fancy me-1"></i> Firmando en Pad Topaz...';
         }
     } catch(e) {
-        alert('No se pudo activar el Pad Topaz.\n\nVerifique que la tableta Topaz T-S460 esté conectada por USB y que el software Topaz SigWeb esté en ejecución.');
+        console.error("Error al activar Topaz:", e);
+        alert('No se pudo activar el Pad Topaz.\n\nVerifique que la tableta Topaz T-S460 esté conectada por USB y que el servicio SigWeb esté en ejecución.');
     }
 }
 
-async function limpiarPadTopaz() {
+function limpiarPadTopaz() {
     try {
-        const base = getSigWebBaseUrl();
-        await fetch(base + '/SigWeb/ClearTablet', { mode: 'cors' });
+        if (typeof Reset === 'function') Reset();
+        if (typeof ClearTablet === 'function') ClearTablet();
         limpiarCanvas();
-    } catch(e) {}
-}
-
-async function capturarFirmaPadTopaz() {
-    const badge = document.getElementById('badgeEstadoTopaz');
-    try {
-        const base = getSigWebBaseUrl();
-        const res = await fetch(base + '/SigWeb/GetSigImage/1', { mode: 'cors' });
-        const data = await res.json();
-        let rawBase64 = '';
-        if (data && typeof data === 'object') {
-            rawBase64 = data.imageData || data.image || data.SigString || '';
-        } else if (typeof data === 'string') {
-            rawBase64 = data;
+        
+        const cvs = document.getElementById('canvas-firma');
+        const cContext = cvs ? cvs.getContext('2d') : null;
+        if (cContext) {
+            SetDisplayTarget(cContext);
+            SetTabletState(1, cContext, 50);
+            topazActivo = true;
         }
-
-        if (rawBase64 && rawBase64.length > 50) {
-            let fullDataUrl = rawBase64.startsWith('data:image') ? rawBase64 : ('data:image/png;base64,' + rawBase64);
-            const img = new Image();
-            img.onload = function() {
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                document.getElementById('firma_base64').value = fullDataUrl;
-            };
-            img.src = fullDataUrl;
-
-            await fetch(base + '/SigWeb/SetTabletState?0', { mode: 'cors' });
-            topazActivo = false;
-
-            if (badge) {
-                badge.className = 'badge bg-success p-2 shadow-sm';
-                badge.innerHTML = '<i class="fa-solid fa-circle-check me-1"></i> Firma Topaz Capturada';
-            }
-        } else {
-            alert('No se detectó ningún trazo en la tableta Topaz.\n\nPor favor solicite al paciente realizar la firma en la pantalla del pad antes de pulsar "Pasar Firma al Acta".');
+        const badge = document.getElementById('badgeEstadoTopaz');
+        if (badge) {
+            badge.className = 'badge bg-warning text-dark p-2 shadow-sm animate-pulse';
+            badge.innerHTML = '<i class="fa-solid fa-pen-fancy me-1"></i> Pad Limpio: Firme en la Tableta';
         }
     } catch(e) {
+        console.error("Error al limpiar Topaz:", e);
+    }
+}
+
+function capturarFirmaPadTopaz() {
+    const badge = document.getElementById('badgeEstadoTopaz');
+    try {
+        GetSigImageB64(function(b64String) {
+            if (b64String && b64String.trim().length > 30) {
+                const fullDataUrl = "data:image/png;base64," + b64String.trim();
+                const cvs = document.getElementById('canvas-firma');
+                const cContext = cvs.getContext('2d');
+                
+                const img = new Image();
+                img.onload = function() {
+                    cContext.clearRect(0, 0, cvs.width, cvs.height);
+                    cContext.drawImage(img, 0, 0, cvs.width, cvs.height);
+                    document.getElementById('firma_base64').value = fullDataUrl;
+                };
+                img.src = fullDataUrl;
+
+                SetTabletState(0, topazTimer);
+                topazActivo = false;
+
+                if (badge) {
+                    badge.className = 'badge bg-success p-2 shadow-sm';
+                    badge.innerHTML = '<i class="fa-solid fa-circle-check me-1"></i> Firma Topaz Capturada';
+                }
+            } else {
+                // Verificar si hay puntos o dibujo en canvas
+                const cvs = document.getElementById('canvas-firma');
+                if (!isCanvasBlank(cvs)) {
+                    document.getElementById('firma_base64').value = cvs.toDataURL('image/png');
+                    SetTabletState(0, topazTimer);
+                    topazActivo = false;
+                    if (badge) {
+                        badge.className = 'badge bg-success p-2 shadow-sm';
+                        badge.innerHTML = '<i class="fa-solid fa-circle-check me-1"></i> Firma Topaz Capturada';
+                    }
+                    return;
+                }
+                alert('No se detectó ningún trazo nuevo en la tableta Topaz.\n\nPor favor realice la firma en la tableta con el lápiz antes de pulsar "Pasar Firma al Acta".');
+            }
+        });
+    } catch(e) {
+        console.error("Error al capturar firma Topaz:", e);
         alert('Error al transferir la firma desde el pad Topaz.');
     }
 }
 
-async function cerrarPadTopaz() {
+function cerrarPadTopaz() {
     if (topazActivo) {
         try {
-            const base = getSigWebBaseUrl();
-            await fetch(base + '/SigWeb/SetTabletState?0', { mode: 'cors' });
+            SetTabletState(0, topazTimer);
             topazActivo = false;
         } catch(e) {}
     }

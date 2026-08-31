@@ -1,590 +1,83 @@
 <?php
 require_once __DIR__ . '/../../config/app.php';
-check_role(['Administrador', 'empresa', 'usuarios']);
+check_role(['Administrador', 'empresa', 'usuarios', 'orientador']);
 
-require_once __DIR__ . '/../../models/Paciente.php';
-require_once __DIR__ . '/../../services/QrystalosSyncService.php';
-
-// Ajustar límites de PHP para permitir importación masiva de hasta 100.000+ registros
 @ini_set('memory_limit', '512M');
 @ini_set('max_execution_time', '600');
 @set_time_limit(600);
 
-$pacienteModel = new Paciente();
-$qrystalosService = new QrystalosSyncService();
+require_once __DIR__ . '/../../models/Paciente.php';
+require_once __DIR__ . '/../../services/QrystalosSyncService.php';
 
-/*
- * ================================================================
- * CONFIGURACIÓN DE INTEGRACIÓN CON QRYSTALOS
- * ================================================================
- * La integración queda preparada, pero DESACTIVADA por defecto
- * mientras se reciben las credenciales, URL, catálogos y demás
- * parámetros oficiales del onboarding de Qrystalos.
- *
- * Cuando la API esté lista, cambiar solamente:
- *     false  ->  true
- *
- * La importación local NO depende de Qrystalos: si la API está
- * deshabilitada o presenta un error, el paciente permanece guardado
- * en la BD local.
- */
-$qrystalosHabilitado = false;
+require_once __DIR__ . '/../../config/importacion.php';
+require_once __DIR__ . '/importacion/ImportacionResultado.php';
+require_once __DIR__ . '/importacion/ImportacionValidacion.php';
+require_once __DIR__ . '/importacion/PacienteMapper.php';
+require_once __DIR__ . '/importacion/PacienteImportador.php';
+require_once __DIR__ . '/importacion/QrystalosImportador.php';
+require_once __DIR__ . '/importacion/ImportadorXlsx.php';
+require_once __DIR__ . '/importacion/ImportadorCsv.php';
+require_once __DIR__ . '/importacion/ImportacionPacienteService.php';
+
+$configImportacion = require __DIR__ . '/../../config/importacion.php';
 
 $mensaje = '';
 $error = '';
 $resumenImportacion = null;
 
-$qrystalosOk = 0;
-$qrystalosError = 0;
-$erroresQrystalos = [];
+$pacienteModel = new Paciente();
+$qrystalosService = new QrystalosSyncService();
 
-/**
- * Importación compatible con la clase Paciente actual.
- *
- * El modelo existente utiliza createOrUpdate(), no importarLoteMasivo().
- * Se mantiene la interfaz de lotes del módulo para no romper el lector
- * XLSX/CSV optimizado. Cada registro se procesa mediante el método real
- * disponible en Paciente.
- */
-function importarLoteCompatible(array $lote, Paciente $pacienteModel): array {
-    $procesados = 0;
-    $omitidos = 0;
+$validacion = new ImportacionValidacion();
+$mapper = new PacienteMapper();
 
-    foreach ($lote as $fila) {
-        $tipoDoc = strtoupper(trim((string)($fila['tipo_documento'] ?? 'CC')));
-        $numDoc = preg_replace('/[^\dA-Za-z]/', '', trim((string)($fila['numero_documento'] ?? '')));
+$pacienteImportador = new PacienteImportador(
+    $pacienteModel,
+    $validacion,
+    $mapper
+);
 
-        $primerNombre = trim((string)($fila['primer_nombre'] ?? ''));
-        $primerApellido = trim((string)($fila['primer_apellido'] ?? ''));
+$qrystalosImportador = new QrystalosImportador(
+    $pacienteModel,
+    $qrystalosService,
+    (bool)$configImportacion['qrystalos']['enabled'],
+    (int)$configImportacion['max_errors_qrystalos']
+);
 
-        if ($numDoc === '' || $primerNombre === '' || $primerApellido === '') {
-            $omitidos++;
-            continue;
-        }
+$importacionService = new ImportacionPacienteService(
+    new ImportadorXlsx(),
+    new ImportadorCsv(),
+    $pacienteImportador,
+    $qrystalosImportador,
+    (int)$configImportacion['batch_size']
+);
 
-        $segundoNombre = trim((string)($fila['segundo_nombre'] ?? ''));
-        $segundoApellido = trim((string)($fila['segundo_apellido'] ?? ''));
-        $fecha = trim((string)($fila['fecha_nacimiento'] ?? ''));
-
-        if ($fecha !== '') {
-            $timestamp = strtotime($fecha);
-            $fecha = $timestamp !== false ? date('Y-m-d', $timestamp) : null;
-        } else {
-            $fecha = null;
-        }
-
-        $sexo = trim((string)($fila['sexo'] ?? 'Masculino'));
-        if (!in_array($sexo, ['Masculino', 'Femenino', 'Indeterminado o Intersexual'], true)) {
-            $sexo = 'Masculino';
-        }
-
-        $celular = trim((string)($fila['numero_celular'] ?? ''));
-        $eps = trim((string)($fila['eps_nombre'] ?? '')) ?: 'Particular / Sin EPS';
-
-        $datosPaciente = [
-            'tipo_documento'        => $tipoDoc,
-            'numero_documento'      => $numDoc,
-            'primer_nombre'         => $primerNombre,
-            'segundo_nombre'        => $segundoNombre,
-            'primer_apellido'       => $primerApellido,
-            'segundo_apellido'      => $segundoApellido,
-            'nombres'               => trim($primerNombre . ' ' . $segundoNombre),
-            'apellidos'             => trim($primerApellido . ' ' . $segundoApellido),
-            'fecha_nacimiento'      => $fecha,
-            'sexo'                  => $sexo,
-            'estado_civil'          => trim((string)($fila['estado_civil'] ?? '')),
-            'grupo_sanguineo'       => trim((string)($fila['grupo_sanguineo'] ?? '')),
-            'grupo_etnico'          => trim((string)($fila['grupo_etnico'] ?? '')),
-            'tipo_discapacidad'     => trim((string)($fila['tipo_discapacidad'] ?? '')),
-            'tipo_escolaridad'      => trim((string)($fila['tipo_escolaridad'] ?? '')),
-            'ocupacion'             => trim((string)($fila['ocupacion'] ?? '')),
-            'eps_nombre'            => $eps,
-            'numero_celular'        => $celular,
-            'email'                 => trim((string)($fila['email'] ?? '')),
-            'direccion_residencia'  => trim((string)($fila['direccion_residencia'] ?? '')),
-            'ciudad_residencia'     => trim((string)($fila['ciudad_residencia'] ?? '')),
-            'barrio'                => trim((string)($fila['barrio'] ?? '')),
-            'zona'                  => trim((string)($fila['zona'] ?? '')),
-            'sede_atencion'         => trim((string)($fila['sede_atencion'] ?? '')),
-            'tipo_afiliado'         => trim((string)($fila['tipo_afiliado'] ?? '')),
-            'nivel_socioeconomico'  => trim((string)($fila['nivel_socioeconomico'] ?? '')),
-            'estrato_socioeconomico'=> trim((string)($fila['estrato_socioeconomico'] ?? '')),
-            'ips_primaria'          => trim((string)($fila['ips_primaria'] ?? '')),
-            'ips_remite'            => trim((string)($fila['ips_remite'] ?? '')),
-            'grupo_poblacional'     => trim((string)($fila['grupo_poblacional'] ?? '')),
-            'ciudad_expedicion'     => trim((string)($fila['ciudad_expedicion'] ?? '')),
-            'telefono'              => $celular
-        ];
-
-        try {
-            $pacienteModel->createOrUpdate($datosPaciente);
-            $procesados++;
-        } catch (Throwable $e) {
-            // Un registro defectuoso no debe detener toda la carga masiva.
-            $omitidos++;
-        }
-    }
-
-    return [
-        'procesados' => $procesados,
-        'omitidos'   => $omitidos
-    ];
-}
-
-/**
- * Sincroniza un lote ya guardado localmente con Qrystalos.
- *
- * Importante:
- * - La BD local siempre se procesa primero.
- * - La API es opcional y se puede activar/desactivar arriba.
- * - Se conserva el consecutivo Qrystalos para futuras actualizaciones.
- * - Un fallo de Qrystalos NO revierte la importación local.
- */
-function sincronizarLoteQrystalos(
-    array $lote,
-    Paciente $pacienteModel,
-    QrystalosSyncService $qrystalosService,
-    bool $qrystalosHabilitado,
-    int &$qrystalosOk,
-    int &$qrystalosError,
-    array &$erroresQrystalos
-): void {
-    if (!$qrystalosHabilitado) {
-        return;
-    }
-
-    foreach ($lote as $indice => $fila) {
-        $tipoDoc = strtoupper(trim((string)($fila['tipo_documento'] ?? 'CC')));
-        $numDoc = trim((string)($fila['numero_documento'] ?? ''));
-
-        if ($numDoc === '' || trim((string)($fila['primer_nombre'] ?? '')) === '') {
-            continue;
-        }
-
-        try {
-            // Recuperar el registro local ya insertado/actualizado y su
-            // consecutivo de Qrystalos, si ya existía.
-            $pacExistente = $pacienteModel->getByDocumento($tipoDoc, $numDoc);
-            $idQrystalosExistente = $pacExistente
-                ? ($pacExistente['qrystalos_consecutivo'] ?? null)
-                : null;
-
-            $primerNombre = trim((string)($fila['primer_nombre'] ?? ''));
-            $segundoNombre = trim((string)($fila['segundo_nombre'] ?? ''));
-            $primerApellido = trim((string)($fila['primer_apellido'] ?? ''));
-            $segundoApellido = trim((string)($fila['segundo_apellido'] ?? ''));
-
-            $fechaNacimiento = trim((string)($fila['fecha_nacimiento'] ?? ''));
-            if ($fechaNacimiento !== '') {
-                $timestamp = strtotime($fechaNacimiento);
-                $fechaNacimiento = $timestamp !== false
-                    ? date('Y-m-d', $timestamp)
-                    : null;
-            } else {
-                $fechaNacimiento = null;
-            }
-
-            $sexo = trim((string)($fila['sexo'] ?? 'Masculino'));
-            if (!in_array($sexo, ['Masculino', 'Femenino', 'Indeterminado o Intersexual'], true)) {
-                $sexo = 'Masculino';
-            }
-
-            /*
-             * Se envían al servicio los campos compatibles con la versión
-             * original de la integración, conservando además los datos
-             * disponibles en la plantilla ampliada.
-             */
-            $datosPaciente = [
-                'tipo_documento'       => $tipoDoc,
-                'numero_documento'     => $numDoc,
-                'primer_nombre'        => $primerNombre,
-                'segundo_nombre'       => $segundoNombre,
-                'primer_apellido'      => $primerApellido,
-                'segundo_apellido'     => $segundoApellido,
-                'nombres'              => trim($primerNombre . ' ' . $segundoNombre),
-                'apellidos'            => trim($primerApellido . ' ' . $segundoApellido),
-                'fecha_nacimiento'     => $fechaNacimiento,
-                'sexo'                 => $sexo,
-                'estado_civil'         => trim((string)($fila['estado_civil'] ?? '')),
-                'grupo_sanguineo'      => trim((string)($fila['grupo_sanguineo'] ?? '')),
-                'grupo_etnico'         => trim((string)($fila['grupo_etnico'] ?? '')),
-                'tipo_discapacidad'    => trim((string)($fila['tipo_discapacidad'] ?? '')),
-                'tipo_escolaridad'     => trim((string)($fila['tipo_escolaridad'] ?? '')),
-                'ocupacion'            => trim((string)($fila['ocupacion'] ?? '')),
-                'eps_nombre'           => trim((string)($fila['eps_nombre'] ?? '')) ?: 'Particular / Sin EPS',
-                'numero_celular'       => trim((string)($fila['numero_celular'] ?? '')),
-                'email'                => trim((string)($fila['email'] ?? '')),
-                'direccion_residencia' => trim((string)($fila['direccion_residencia'] ?? '')),
-                'ciudad_residencia'   => trim((string)($fila['ciudad_residencia'] ?? '')),
-                'barrio'               => trim((string)($fila['barrio'] ?? '')),
-                'zona'                 => trim((string)($fila['zona'] ?? '')),
-                'sede_atencion'        => trim((string)($fila['sede_atencion'] ?? '')),
-                'tipo_afiliado'        => trim((string)($fila['tipo_afiliado'] ?? '')),
-                'nivel_socioeconomico'=> trim((string)($fila['nivel_socioeconomico'] ?? '')),
-                'estrato_socioeconomico'=> trim((string)($fila['estrato_socioeconomico'] ?? '')),
-                'ips_primaria'         => trim((string)($fila['ips_primaria'] ?? '')),
-                'ips_remite'           => trim((string)($fila['ips_remite'] ?? '')),
-                'grupo_poblacional'    => trim((string)($fila['grupo_poblacional'] ?? '')),
-                'ciudad_expedicion'    => trim((string)($fila['ciudad_expedicion'] ?? '')),
-                'telefono'             => trim((string)($fila['numero_celular'] ?? ''))
-            ];
-
-            $resultadoQrystalos = $qrystalosService->sincronizarPaciente(
-                $datosPaciente,
-                $idQrystalosExistente
-            );
-
-            if (!empty($resultadoQrystalos['success'])) {
-                $qrystalosOk++;
-
-                if (!empty($resultadoQrystalos['consecutivo'])) {
-                    $pacienteModel->actualizarQrystalosId(
-                        $tipoDoc,
-                        $numDoc,
-                        $resultadoQrystalos['consecutivo']
-                    );
-                }
-            } else {
-                $qrystalosError++;
-
-                if (count($erroresQrystalos) < 5) {
-                    $detalle = $resultadoQrystalos['error'] ?? 'Respuesta no especificada de Qrystalos';
-                    $erroresQrystalos[] =
-                        'Registro ' . ($indice + 1) .
-                        ' (Doc: ' . $numDoc . '): ' . $detalle;
-                }
-            }
-        } catch (Throwable $e) {
-            $qrystalosError++;
-
-            if (count($erroresQrystalos) < 5) {
-                $erroresQrystalos[] =
-                    'Registro ' . ($indice + 1) .
-                    ' (Doc: ' . $numDoc . '): ' . $e->getMessage();
-            }
-        }
-    }
-}
-
-
-// ==========================================
-// 1. DESCARGA DIRECTA DE PLANTILLAS OFICIALES
-// ==========================================
-if (isset($_GET['download_template'])) {
-    while (ob_get_level()) {
-        ob_end_clean();
-    }
-    if ($_GET['download_template'] === 'xlsx') {
-        $file_path = file_exists(BASE_DIR . '/assets/plantilla_pacientes_v2.xlsx') 
-            ? BASE_DIR . '/assets/plantilla_pacientes_v2.xlsx' 
-            : BASE_DIR . '/assets/plantilla_pacientes.xlsx';
-        if (file_exists($file_path)) {
-            header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-            header('Content-Disposition: attachment; filename="plantilla_pacientes_sispam.xlsx"');
-            header('Content-Length: ' . filesize($file_path));
-            header('Cache-Control: max-age=0, no-cache, must-revalidate, proxy-revalidate');
-            header('Pragma: public');
-            readfile($file_path);
-            exit;
-        }
-    } elseif ($_GET['download_template'] === 'csv' || $_GET['download_template'] == '1') {
-        $headers = [
-            'tipo_documento', 'numero_documento', 'primer_apellido', 'segundo_apellido',
-            'primer_nombre', 'segundo_nombre', 'fecha_nacimiento', 'sexo', 'estado_civil',
-            'grupo_sanguineo', 'grupo_etnico', 'tipo_discapacidad', 'tipo_escolaridad',
-            'ocupacion', 'eps_nombre', 'numero_celular', 'email', 'direccion_residencia',
-            'ciudad_residencia', 'barrio', 'zona', 'sede_atencion', 'tipo_afiliado',
-            'nivel_socioeconomico', 'estrato_socioeconomico', 'ips_primaria', 'ips_remite',
-            'grupo_poblacional'
-        ];
-        header('Content-Type: text/csv; charset=utf-8');
-        header('Content-Disposition: attachment; filename="plantilla_pacientes_sispam.csv"');
-        header('Cache-Control: max-age=0, no-cache, must-revalidate');
-        $output = fopen('php://output', 'w');
-        // BOM UTF-8 para Excel
-        fprintf($output, chr(0xEF).chr(0xBB).chr(0xBF));
-        fputcsv($output, $headers, ';');
-        fputcsv($output, [
-            'CC', '1036780004', 'GOMEZ', 'CHICA', 'VALENTINA', '', '2007-06-01', 'Femenino', 'Soltero',
-            'S/N', 'S', 'N', '13', '0000', 'EPS040', '3195441510', 'valentina@gmail.com', 'CARRERA 9 # 14-37',
-            '05001', 'B018', 'U', '20', '01', '2', '3',
-            '900294794 - COMITE DE ESTUDIOS MEDICOS SAS', 'Hospital Venancio Díaz Díaz (Sabaneta)', '5'
-        ], ';');
-        fclose($output);
-        exit;
-    }
-}
-
-// ==========================================
-// 2. PARSER STREAMING ULTRA-RÁPIDO (.XLSX)
-// ==========================================
-class NativeXlsxStreamReader {
-    public static function parse($filePath, $onChunkCallback, $chunkSize = 1000) {
-        $zip = new ZipArchive();
-        if ($zip->open($filePath) !== true) {
-            return false;
-        }
-
-        // 1. Cargar cadenas compartidas de forma eficiente
-        $sharedStrings = [];
-        $sstXml = $zip->getFromName('xl/sharedStrings.xml');
-        if ($sstXml !== false) {
-            $reader = new XMLReader();
-            $reader->XML($sstXml);
-            while ($reader->read()) {
-                if ($reader->nodeType === XMLReader::ELEMENT && $reader->name === 'si') {
-                    $siXml = $reader->readOuterXML();
-                    preg_match_all('/<t[^>]*>(.*?)<\/t>/s', $siXml, $matches);
-                    $sharedStrings[] = html_entity_decode(implode('', $matches[1]), ENT_QUOTES | ENT_XML1, 'UTF-8');
-                }
-            }
-            $reader->close();
-            unset($sstXml);
-        }
-
-        // 2. Transmisión del contenido de la hoja
-        $sheetStream = $zip->getStream('xl/worksheets/sheet1.xml');
-        if (!$sheetStream) {
-            $zip->close();
-            return false;
-        }
-
-        $tempSheet = tempnam(sys_get_temp_dir(), 'sispam_sheet_');
-        $fp = fopen($tempSheet, 'w');
-        while (!feof($sheetStream)) {
-            fwrite($fp, fread($sheetStream, 65536));
-        }
-        fclose($fp);
-        fclose($sheetStream);
-        $zip->close();
-
-        $reader = new XMLReader();
-        $reader->open($tempSheet);
-
-        $rowIdx = 0;
-        $headers = [];
-        $batch = [];
-        $totalProcesados = 0;
-
-        while ($reader->read()) {
-            if ($reader->nodeType === XMLReader::ELEMENT && $reader->name === 'row') {
-                $rowXml = $reader->readOuterXML();
-                $rowCells = self::extractCells($rowXml, $sharedStrings);
-                $rowIdx++;
-
-                if ($rowIdx === 1) {
-                    $headers = array_map(function($h) {
-                        return strtolower(trim(preg_replace('/[^a-zA-Z0-9_]/', '_', $h)));
-                    }, $rowCells);
-                } else {
-                    $assoc = [];
-                    foreach ($headers as $colIdx => $headerName) {
-                        if (!empty($headerName)) {
-                            $assoc[$headerName] = $rowCells[$colIdx] ?? '';
-                        }
-                    }
-                    $batch[] = $assoc;
-                    if (count($batch) >= $chunkSize) {
-                        $onChunkCallback($batch);
-                        $totalProcesados += count($batch);
-                        $batch = [];
-                    }
-                }
-            }
-        }
-
-        if (!empty($batch)) {
-            $onChunkCallback($batch);
-            $totalProcesados += count($batch);
-        }
-
-        $reader->close();
-        @unlink($tempSheet);
-        return $totalProcesados;
-    }
-
-    private static function extractCells($rowXml, &$sharedStrings) {
-        $cells = [];
-        $reader = new XMLReader();
-        $reader->XML($rowXml);
-
-        while ($reader->read()) {
-            if ($reader->nodeType === XMLReader::ELEMENT && $reader->name === 'c') {
-                $rAttr = $reader->getAttribute('r');
-                $tAttr = $reader->getAttribute('t');
-                $colIdx = self::colLetterToIndex(preg_replace('/\d+/', '', $rAttr));
-
-                $val = '';
-                $cellXml = $reader->readOuterXML();
-                if ($tAttr === 's') {
-                    if (preg_match('/<v>(.*?)<\/v>/', $cellXml, $m)) {
-                        $sIdx = intval($m[1]);
-                        $val = $sharedStrings[$sIdx] ?? '';
-                    }
-                } elseif ($tAttr === 'inlineStr') {
-                    if (preg_match_all('/<t[^>]*>(.*?)<\/t>/s', $cellXml, $m)) {
-                        $val = html_entity_decode(implode('', $m[1]), ENT_QUOTES | ENT_XML1, 'UTF-8');
-                    }
-                } else {
-                    if (preg_match('/<v>(.*?)<\/v>/', $cellXml, $m)) {
-                        $val = trim($m[1]);
-                    }
-                }
-                $cells[$colIdx] = $val;
-            }
-        }
-        $reader->close();
-
-        if (!empty($cells)) {
-            $maxCol = max(array_keys($cells));
-            $ordered = [];
-            for ($i = 0; $i <= $maxCol; $i++) {
-                $ordered[$i] = $cells[$i] ?? '';
-            }
-            return $ordered;
-        }
-        return [];
-    }
-
-    private static function colLetterToIndex($colStr) {
-        $colStr = strtoupper($colStr);
-        $len = strlen($colStr);
-        $idx = 0;
-        for ($i = 0; $i < $len; $i++) {
-            $idx = $idx * 26 + (ord($colStr[$i]) - 64);
-        }
-        return $idx - 1;
-    }
-}
-
-// ==========================================
-// 3. PROCESAMIENTO DE CARGA MASIVA (POST)
-// ==========================================
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['archivo_pacientes'])) {
     $file = $_FILES['archivo_pacientes'];
+
     if ($file['error'] === UPLOAD_ERR_OK && is_uploaded_file($file['tmp_name'])) {
-        $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-        $startTime = microtime(true);
-
-        $totalProcesados = 0;
-        $totalOmitidos = 0;
-
         try {
-            if ($ext === 'xlsx') {
-                // Procesar archivo Excel nativo (.xlsx)
-                NativeXlsxStreamReader::parse($file['tmp_name'], function($chunk) use (
-                    $pacienteModel,
-                    $qrystalosService,
-                    $qrystalosHabilitado,
-                    &$totalProcesados,
-                    &$totalOmitidos,
-                    &$qrystalosOk,
-                    &$qrystalosError,
-                    &$erroresQrystalos
-                ) {
-                    // PASO A: importar SIEMPRE a la BD local.
-                    $res = importarLoteCompatible($chunk, $pacienteModel);
-                    $totalProcesados += $res['procesados'];
-                    $totalOmitidos   += $res['omitidos'];
+            $startTime = microtime(true);
+            $extension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
 
-                    // PASO B: sincronizar con Qrystalos solamente si está habilitado.
-                    sincronizarLoteQrystalos(
-                        $chunk,
-                        $pacienteModel,
-                        $qrystalosService,
-                        $qrystalosHabilitado,
-                        $qrystalosOk,
-                        $qrystalosError,
-                        $erroresQrystalos
-                    );
-                }, 1000);
-            } elseif ($ext === 'csv' || $ext === 'txt') {
-                // Procesar archivo CSV delimitado por comas o punto y coma
-                $handle = fopen($file['tmp_name'], 'r');
-                if ($handle !== false) {
-                    // Detección de separador (, o ;)
-                    $firstLine = fgets($handle);
-                    $sep = (substr_count($firstLine, ';') > substr_count($firstLine, ',')) ? ';' : ',';
-                    rewind($handle);
-
-                    // Leer encabezado
-                    $headerRaw = fgetcsv($handle, 4000, $sep);
-                    $headers = array_map(function($h) {
-                        // Eliminar posibles caracteres BOM
-                        $h = preg_replace('/[\x00-\x1F\x80-\xFF]/', '', $h);
-                        return strtolower(trim(preg_replace('/[^a-zA-Z0-9_]/', '_', $h)));
-                    }, $headerRaw);
-
-                    $batch = [];
-                    while (($row = fgetcsv($handle, 4000, $sep)) !== false) {
-                        if (count($row) < 2) continue;
-                        $assoc = [];
-                        foreach ($headers as $idx => $hName) {
-                            if (!empty($hName)) {
-                                $assoc[$hName] = $row[$idx] ?? '';
-                            }
-                        }
-                        $batch[] = $assoc;
-                        if (count($batch) >= 1000) {
-                            $res = importarLoteCompatible($batch, $pacienteModel);
-                            $totalProcesados += $res['procesados'];
-                            $totalOmitidos   += $res['omitidos'];
-
-                            // La sincronización externa nunca bloquea la BD local.
-                            sincronizarLoteQrystalos(
-                                $batch,
-                                $pacienteModel,
-                                $qrystalosService,
-                                $qrystalosHabilitado,
-                                $qrystalosOk,
-                                $qrystalosError,
-                                $erroresQrystalos
-                            );
-
-                            $batch = [];
-                        }
-                    }
-                    if (!empty($batch)) {
-                        $res = importarLoteCompatible($batch, $pacienteModel);
-                        $totalProcesados += $res['procesados'];
-                        $totalOmitidos   += $res['omitidos'];
-
-                        sincronizarLoteQrystalos(
-                            $batch,
-                            $pacienteModel,
-                            $qrystalosService,
-                            $qrystalosHabilitado,
-                            $qrystalosOk,
-                            $qrystalosError,
-                            $erroresQrystalos
-                        );
-                    }
-                    fclose($handle);
-                } else {
-                    throw new Exception("No se pudo abrir el archivo CSV para lectura.");
-                }
-            } else {
-                throw new Exception("Formato de archivo no soportado. Suba un archivo Excel (.xlsx) o CSV (.csv).");
-            }
+            $resultado = $importacionService->procesar(
+                $file['tmp_name'],
+                $extension
+            );
 
             $duration = round(microtime(true) - $startTime, 2);
-            $mensaje = "Importación masiva completada con éxito en {$duration} segundos.";
-            $resumenImportacion = [
-                'procesados' => $totalProcesados,
-                'omitidos'   => $totalOmitidos,
-                'total'      => ($totalProcesados + $totalOmitidos),
-                'tiempo'     => $duration,
-                'qrystalos_habilitado' => $qrystalosHabilitado,
-                'qrystalos_ok' => $qrystalosOk,
-                'qrystalos_error' => $qrystalosError,
-                'errores_qrystalos' => $erroresQrystalos
-            ];
 
-        } catch (Exception $e) {
-            $error = "Error durante el procesamiento del archivo: " . $e->getMessage();
+            $resumenImportacion = $resultado->toArray(
+                $duration,
+                (bool)$configImportacion['qrystalos']['enabled']
+            );
+
+            $mensaje = "Importación masiva completada en {$duration} segundos.";
+        } catch (Throwable $e) {
+            $error = 'Error durante el procesamiento: ' . $e->getMessage();
         }
     } else {
-        $error = "Error al subir el archivo. Verifique el tamaño o los permisos del servidor.";
+        $error = 'Error al subir el archivo. Verifique el tamaño o permisos del servidor.';
     }
 }
 
@@ -1121,3 +614,4 @@ function mostrarCargando() {
 </script>
 
 <?php require_once __DIR__ . '/../layouts/footer.php'; ?>
+

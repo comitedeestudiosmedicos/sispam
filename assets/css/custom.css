@@ -68,16 +68,24 @@ body {
 /* Dropdown Menu Glass Enterprise */
 .sispam-dropdown-menu {
     background: #0f172a !important;
-    border: 1px solid rgba(255, 255, 255, 0.12) !important;
-    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.45) !important;
+    border: 1px solid rgba(255, 255, 255, 0.15) !important;
+    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.55) !important;
     border-radius: 12px !important;
     padding: 8px !important;
 }
 
+.sispam-dropdown-menu .dropdown-header {
+    color: #38bdf8 !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.5px;
+    padding: 6px 12px 4px 12px !important;
+    font-size: 0.72rem !important;
+}
+
 .sispam-dropdown-item {
-    font-size: 0.82rem;
+    font-size: 0.84rem;
     font-weight: 500;
-    color: #cbd5e1 !important;
+    color: #f1f5f9 !important;
     padding: 8px 12px;
     border-radius: 8px;
     transition: all 0.15s ease;
@@ -86,16 +94,53 @@ body {
     text-decoration: none;
 }
 
+.sispam-dropdown-item .fw-bold {
+    color: #ffffff !important;
+    font-size: 0.84rem;
+    letter-spacing: 0.2px;
+}
+
+.sispam-dropdown-item small,
+.sispam-dropdown-item .text-muted,
+.sispam-dropdown-item .sispam-item-subtext,
+.sispam-dropdown-menu small,
+.sispam-dropdown-menu .text-muted {
+    color: #94a3b8 !important;
+    font-size: 0.73rem !important;
+    line-height: 1.25;
+    display: block;
+}
+
 .sispam-dropdown-item:hover {
     color: #ffffff !important;
-    background: rgba(56, 189, 248, 0.15) !important;
+    background: rgba(56, 189, 248, 0.18) !important;
     transform: translateX(2px);
+}
+
+.sispam-dropdown-item:hover .fw-bold {
+    color: #38bdf8 !important;
+}
+
+.sispam-dropdown-item:hover small,
+.sispam-dropdown-item:hover .text-muted,
+.sispam-dropdown-item:hover .sispam-item-subtext {
+    color: #e2e8f0 !important;
 }
 
 .sispam-dropdown-item.active {
     color: #ffffff !important;
     background: #0284c7 !important;
     font-weight: 600;
+}
+
+.sispam-dropdown-item.active .fw-bold {
+    color: #ffffff !important;
+}
+
+.sispam-dropdown-item.active small,
+.sispam-dropdown-item.active .text-muted,
+.sispam-dropdown-item.active .sispam-item-subtext {
+    color: rgba(255, 255, 255, 0.92) !important;
 }
 
 /* User Avatar Bubble */

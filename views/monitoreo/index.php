@@ -238,8 +238,14 @@ require_once __DIR__ . '/../layouts/header.php';
                     <div class="col-md-6 d-flex flex-column h-100">
                         <div class="card bg-dark border-secondary h-100 d-flex flex-column">
                             <div class="card-header py-2 bg-secondary bg-opacity-20 text-white fw-bold d-flex justify-content-between align-items-center border-bottom border-secondary">
-                                <span class="text-white fw-bold"><i class="fa-solid fa-file-pdf text-info me-2"></i> 2. Fórmula Transcrita por Transcriptor</span>
-                                <span class="badge bg-primary text-white"><i class="fa-solid fa-check-double me-1"></i> Transcripción Subida</span>
+                                <div class="d-flex align-items-center gap-2">
+                                    <i class="fa-solid fa-file-pdf text-info fs-5"></i>
+                                    <span class="text-white fw-bold">2. Fórmula Transcrita por Transcriptor</span>
+                                </div>
+                                <div id="selectorTranscripcionesMonitoreoCont" class="d-none">
+                                    <select id="selectTranscripcionMonitoreo" class="form-select form-select-sm bg-dark text-warning border-warning fw-bold py-0" style="font-size: 0.82rem; max-width: 280px;" onchange="cambiarTranscripcionMonitoreo(this.value)">
+                                    </select>
+                                </div>
                             </div>
                             <div class="card-body p-0 flex-grow-1 position-relative overflow-hidden" id="containerTranscritoMonitoreo">
                                 <!-- Render de PDF Transcrito -->
@@ -387,6 +393,10 @@ function cambiarDocMonitoreo(url) {
     renderizarDocEscaneado(url);
 }
 
+function cambiarTranscripcionMonitoreo(url) {
+    renderizarDocTranscrito(url);
+}
+
 function renderizarDocEscaneado(url) {
     const containerEscaneado = document.getElementById('containerEscaneadoMonitoreo');
     if (!containerEscaneado) return;
@@ -409,6 +419,34 @@ function renderizarDocEscaneado(url) {
             </div>`;
     } else {
         containerEscaneado.innerHTML = `
+            <object data="${url}#view=Fit&toolbar=1" type="application/pdf" width="100%" height="100%">
+                <embed src="${url}#view=Fit&toolbar=1" type="application/pdf" width="100%" height="100%" />
+            </object>`;
+    }
+}
+
+function renderizarDocTranscrito(url) {
+    const containerTranscrito = document.getElementById('containerTranscritoMonitoreo');
+    if (!containerTranscrito) return;
+
+    if (!url) {
+        containerTranscrito.innerHTML = `
+            <div class="h-100 d-flex flex-column align-items-center justify-content-center text-muted p-4 text-center">
+                <i class="fa-solid fa-file-circle-xmark fa-3x mb-3 text-warning"></i>
+                <h6 class="text-white">No hay archivo transcrito adjunto</h6>
+                <small>El transcriptor no ha adjuntado el archivo de orden transcrita.</small>
+            </div>`;
+        return;
+    }
+
+    const ext = url.split('.').pop().split('?')[0].toLowerCase();
+    if (['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(ext)) {
+        containerTranscrito.innerHTML = `
+            <div class="h-100 p-2 overflow-auto text-center bg-dark d-flex align-items-center justify-content-center">
+                <img src="${url}" class="img-fluid rounded shadow" style="max-height: 80vh; max-width: 100%; object-fit: contain;">
+            </div>`;
+    } else {
+        containerTranscrito.innerHTML = `
             <object data="${url}#view=Fit&toolbar=1" type="application/pdf" width="100%" height="100%">
                 <embed src="${url}#view=Fit&toolbar=1" type="application/pdf" width="100%" height="100%" />
             </object>`;
@@ -500,13 +538,38 @@ function abrirMonitoreoComparativo(id) {
             // Renderizar la Orden Médica en el panel izquierdo
             renderizarDocEscaneado(docOrdenMedicaUrl);
 
-            // Panel Derecho: Cargar PDF Transcrito por el Transcriptor
-            const containerTranscrito = document.getElementById('containerTranscritoMonitoreo');
-            if (data.pdf_transcripcion_url) {
-                containerTranscrito.innerHTML = `<object data="${data.pdf_transcripcion_url}#view=Fit&toolbar=1" type="application/pdf" width="100%" height="100%"><embed src="${data.pdf_transcripcion_url}#view=Fit&toolbar=1" type="application/pdf" width="100%" height="100%" /></object>`;
-            } else {
-                containerTranscrito.innerHTML = `<div class="p-5 text-center text-muted">El transcriptor no ha adjuntado el PDF transcrito.</div>`;
+            // Panel Derecho: Cargar lista de PDFs Transcritos por el Transcriptor
+            const transcripcionesList = data.transcripciones_archivos || [];
+            const selectorTransCont = document.getElementById('selectorTranscripcionesMonitoreoCont');
+            const selectTrans = document.getElementById('selectTranscripcionMonitoreo');
+            if (selectTrans) selectTrans.innerHTML = '';
+
+            let primerPdfUrl = '';
+
+            if (transcripcionesList.length > 0) {
+                primerPdfUrl = transcripcionesList[0].url;
+
+                if (selectTrans && transcripcionesList.length > 1) {
+                    transcripcionesList.forEach((t, idx) => {
+                        const opt = document.createElement('option');
+                        opt.value = t.url;
+                        const nom = t.nombre ? (t.nombre.length > 25 ? t.nombre.substring(0, 22) + '...' : t.nombre) : ('Doc ' + (idx + 1));
+                        opt.textContent = `PDF #${idx + 1}: ${nom}`;
+                        if (idx === 0) opt.selected = true;
+                        selectTrans.appendChild(opt);
+                    });
+                    if (selectorTransCont) selectorTransCont.classList.remove('d-none');
+                } else if (selectorTransCont) {
+                    selectorTransCont.classList.add('d-none');
+                }
+            } else if (data.pdf_transcripcion_url) {
+                primerPdfUrl = data.pdf_transcripcion_url;
+                if (selectorTransCont) selectorTransCont.classList.add('d-none');
+            } else if (selectorTransCont) {
+                selectorTransCont.classList.add('d-none');
             }
+
+            renderizarDocTranscrito(primerPdfUrl);
 
             // Configurar estado de Auditoría MIPRES en el formulario del Monitor
             const radioSi = document.getElementById('mon_mipres_si');

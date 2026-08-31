@@ -868,3 +868,61 @@ Una vez completados estos puntos, el `QrystalosSyncService` y `QrystalosClient` 
 - Configuración BD: `config/database.php`
 - Ejemplo de variables de entorno: `.env.example`
 
+# Módulo modular de importación SISPAM
+
+## Estructura
+
+- `controllers/importar_pacientes.php`: controlador/orquestador principal y UI.
+- `controllers/importacion/ImportacionPacienteService.php`: coordina el flujo.
+- `controllers/importacion/ImportadorXlsx.php`: lectura XLSX por streaming.
+- `controllers/importacion/ImportadorCsv.php`: lectura CSV/TXT.
+- `controllers/importacion/PacienteMapper.php`: normalización de filas.
+- `controllers/importacion/ImportacionValidacion.php`: validaciones mínimas.
+- `controllers/importacion/PacienteImportador.php`: persistencia local usando `Paciente::createOrUpdate()`.
+- `controllers/importacion/QrystalosImportador.php`: adaptación a Qrystalos.
+- `controllers/importacion/ImportacionResultado.php`: estadísticas.
+- `config/importacion.php`: configuración del módulo.
+
+## Instalación
+
+Copiar manteniendo esta estructura relativa:
+
+```text
+controllers/importar_pacientes.php
+controllers/importacion/*.php
+config/importacion.php
+```
+
+El controlador sigue esperando:
+
+```text
+../../config/app.php
+../../models/Paciente.php
+../../services/QrystalosSyncService.php
+../layouts/header.php
+../layouts/footer.php
+```
+
+## Qrystalos
+
+Está desactivado por defecto:
+
+```php
+'qrystalos' => [
+    'enabled' => false,
+],
+```
+
+Cuando el onboarding esté listo, cambiar a `true`.
+
+La integración usa el servicio existente `QrystalosSyncService::sincronizarPaciente()` y el modelo existente `Paciente::getByDocumento()`, `createOrUpdate()` y `actualizarQrystalosId()`.
+
+## Nota de compatibilidad
+
+No se usa `Paciente::importarLoteMasivo()` porque ese método no está presente en la versión del modelo revisada. La importación se realiza en lotes a nivel del lector, y cada registro se persiste mediante el método real `createOrUpdate()`.
+
+## Seguridad y errores
+
+Los errores de Qrystalos no revierten la persistencia local. PHP permite propagar y capturar `Throwable` mediante `try/catch`, que es el patrón usado por el módulo. citeturn0search0turn0search2
+
+Los `require_once` se usan para evitar inclusiones repetidas de los módulos. citeturn0search3

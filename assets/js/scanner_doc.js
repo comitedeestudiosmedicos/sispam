@@ -25,6 +25,7 @@ class DocumentScannerPro {
         // del lote. Se acumula durante todo el lote y se reinicia en resetDoc().
         this.huboAjusteManual = false;
         
+        this.currentFacingMode = 'environment';
         this.stream = null;
         this.imageCapture = null;
         this.torchSupported = false;
@@ -239,8 +240,16 @@ class DocumentScannerPro {
         window.addEventListener('touchcancel', onEnd);
     }
 
+    async switchCamera() {
+        this.currentFacingMode = (this.currentFacingMode === 'environment') ? 'user' : 'environment';
+        await this.startCamera();
+        return this.currentFacingMode;
+    }
+
     async startCamera() {
-        if (this.stream) this.stopCamera();
+        // SIEMPRE detener primero para limpiar el estado del LiveEdgeDetector
+        // (autoCaptureFired, running, etc.), no solo cuando this.stream existe.
+        this.stopCamera();
 
         const isHttp = window.location.protocol === 'http:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
 
@@ -250,17 +259,36 @@ class DocumentScannerPro {
         }
 
         const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+        const facing = this.currentFacingMode || 'environment';
+
         const intentos = [
-            // Intento 1: Cámara trasera en móviles o alta resolución estándar
+            // Intento 1: Alta definición con cámara seleccionada
             {
                 video: {
-                    facingMode: isMobile ? { ideal: "environment" } : undefined,
+                    facingMode: { ideal: facing },
                     width: { ideal: 1920, min: 640 },
-                    height: { ideal: 1080, min: 480 }
+                    height: { ideal: 1080, min: 480 },
+                    focusMode: { ideal: "continuous" }
                 },
                 audio: false
             },
-            // Intento 2: Cualquier cámara disponible
+            // Intento 2: Resolución estándar 720p
+            {
+                video: {
+                    facingMode: { ideal: facing },
+                    width: { ideal: 1280, min: 480 },
+                    height: { ideal: 720, min: 360 }
+                },
+                audio: false
+            },
+            // Intento 3: Sólo facingMode
+            {
+                video: {
+                    facingMode: facing
+                },
+                audio: false
+            },
+            // Intento 4: Genérico
             {
                 video: true,
                 audio: false
@@ -273,6 +301,7 @@ class DocumentScannerPro {
                 if (this.stream && this.videoElement) {
                     this.videoElement.srcObject = this.stream;
                     this.videoElement.setAttribute('playsinline', 'true');
+                    this.videoElement.setAttribute('webkit-playsinline', 'true');
                     this.videoElement.setAttribute('autoplay', 'true');
                     this.videoElement.muted = true;
                     try {
@@ -282,6 +311,16 @@ class DocumentScannerPro {
                             this.videoElement.play().catch(e => console.warn("[Scanner] play error:", e));
                         };
                     }
+
+                    try {
+                        const track = this.stream.getVideoTracks()[0];
+                        if (track && track.applyConstraints) {
+                            track.applyConstraints({
+                                advanced: [{ focusMode: "continuous" }]
+                            }).catch(() => {});
+                        }
+                    } catch (fErr) {}
+
                     this._setupCaptureCapabilities();
                     this.startLiveDetection();
                     return true;
@@ -441,38 +480,22 @@ class DocumentScannerPro {
 
     _takeSnapshotViaCanvas() {
         if (!this.videoElement) return null;
-        const vW = this.videoElement.videoWidth || this.videoElement.clientWidth || 1280;
-        const vH = this.videoElement.videoHeight || this.videoElement.clientHeight || 720;
+        const vw = this.videoElement.videoWidth || 1280;
+        const vh = this.videoElement.videoHeight || 720;
 
-        this.canvasSource.width = vW;
-        this.canvasSource.height = vH;
-        const ctx = this.canvasSource.getContext('2d');
+        const snapCanvas = document.createElement('canvas');
+        snapCanvas.width = vw;
+        snapCanvas.height = vh;
+        const ctx = snapCanvas.getContext('2d');
         try {
-            ctx.drawImage(this.videoElement, 0, 0, vW, vH);
+            ctx.drawImage(this.videoElement, 0, 0, vw, vh);
         } catch (e) {
             console.warn("[Scanner] Error drawing video to canvas:", e);
         }
 
-        return new Promise((resolve) => {
-            const img = new Image();
-            img.onload = () => {
-                this._lastCaptureMethod = `canvas (${vW}x${vH})`;
-                this.loadCapturedImage(img);
-                resolve(img);
-            };
-            img.onerror = () => {
-                console.warn("[Scanner] Error cargando dataURL en Image");
-                this.loadCapturedImage(this.canvasSource);
-                resolve(this.canvasSource);
-            };
-            try {
-                img.src = this.canvasSource.toDataURL('image/jpeg', 0.95);
-            } catch (secErr) {
-                console.warn("[Scanner] toDataURL error:", secErr);
-                this.loadCapturedImage(this.canvasSource);
-                resolve(this.canvasSource);
-            }
-        });
+        this._lastCaptureMethod = `canvas (${vw}x${vh})`;
+        this.loadCapturedImage(snapCanvas);
+        return Promise.resolve(snapCanvas);
     }
 
     _blobToImage(blob) {
@@ -507,63 +530,33 @@ class DocumentScannerPro {
         if (!this.rawImage) return;
 
         const tipo = docType || this.docType || null;
-        // Esquinas ya suavizadas de la detección en vivo (media móvil exponencial), que son
-        // exactamente las que el usuario vio resaltadas en verde al momento de disparar.
-        const live = (this.liveCorners && this.liveCorners.length === 4)
-            ? this.orderCornerPoints(this.liveCorners)
-            : null;
+        if (tipo === 'CEDULA') {
+            // Encuadre optimizado al tamaño real de la Cédula (tarjeta horizontal en pantalla vertical)
+            const isPortrait = this.rawHeight > this.rawWidth;
+            let w = 0.90;
+            let h = isPortrait ? ((w * this.rawWidth) / (1.586 * this.rawHeight)) : 0.76;
+            if (!isPortrait) w = (h * this.rawHeight * 1.586) / this.rawWidth;
+            
+            const minX = Math.max(0.02, (1 - w) / 2);
+            const maxX = Math.min(0.98, minX + w);
+            const minY = Math.max(0.04, (1 - h) / 2);
+            const maxY = Math.min(0.96, minY + h);
 
-        // 1) Detectar sobre la foto ya capturada, reutilizando el MISMO pipeline que la
-        //    detección en vivo (assets/js/scanner_detect.js) en vez de una copia aparte
-        //    con otros parámetros.
-        if (typeof cv !== 'undefined' && cv.Mat && window.SISPAM_Scanner) {
-            try {
-                const maxDim = 640;
-                const scale = Math.min(1, maxDim / Math.max(this.rawWidth, this.rawHeight));
-                const w = Math.max(1, Math.round(this.rawWidth * scale));
-                const h = Math.max(1, Math.round(this.rawHeight * scale));
-
-                const tmp = document.createElement('canvas');
-                tmp.width = w;
-                tmp.height = h;
-                const tctx = tmp.getContext('2d', { willReadFrequently: true });
-                tctx.drawImage(this.rawImage, 0, 0, w, h);
-
-                const imageData = tctx.getImageData(0, 0, w, h);
-                const res = window.SISPAM_Scanner.detectDocumentQuad(imageData, w, h, { docType: tipo });
-
-                if (res && res.corners) {
-                    // La foto fija tiene más resolución y menos ruido de movimiento, así que
-                    // afina el recorte — PERO solo se acepta si coincide con lo que la
-                    // detección en vivo venía marcando. Si señala otra cosa, el usuario
-                    // vería un recorte distinto del que tenía resaltado al disparar, que es
-                    // justo la sorpresa que hay que evitar.
-                    if (!live || this._quadsAgree(res.corners, live)) {
-                        this.corners = res.corners;
-                        console.log(`[Scanner] Bordes detectados en la foto capturada (método: ${res.method}).`);
-                        return;
-                    }
-                    console.log("[Scanner] La detección sobre la foto señala otra región; se conservan las esquinas suavizadas del preview.");
-                }
-            } catch (err) {
-                console.warn("Fallo auto-detección sobre la foto capturada:", err);
-            }
-        }
-
-        // 2) Si la foto fija no dio resultado pero la detección EN VIVO sí tenía el
-        //    documento localizado justo antes de disparar, reutilizar esas esquinas.
-        if (live) {
-            this.corners = live;
-            console.log("[Scanner] Usando las esquinas suavizadas de la detección en vivo previa a la captura.");
+            this.corners = [
+                { x: minX, y: minY },
+                { x: maxX, y: minY },
+                { x: maxX, y: maxY },
+                { x: minX, y: maxY }
+            ];
             return;
         }
 
-        // 3) Último recurso: cuadrilátero centrado al 85% para que el usuario lo ajuste.
+        // Para Orden Médica / otros documentos: 99% de la hoja completa
         this.corners = [
-            { x: 0.08, y: 0.08 },
-            { x: 0.92, y: 0.08 },
-            { x: 0.92, y: 0.92 },
-            { x: 0.08, y: 0.92 }
+            { x: 0.01, y: 0.01 },
+            { x: 0.99, y: 0.01 },
+            { x: 0.99, y: 0.99 },
+            { x: 0.01, y: 0.99 }
         ];
     }
 
@@ -622,7 +615,11 @@ class DocumentScannerPro {
     // Imagen que se dibuja en la pantalla de revisión: la realzada si se pudo construir.
     // El recorte final SIEMPRE se calcula sobre rawImage, que conserva la resolución.
     get displayImage() {
-        return this.previewImage || this.rawImage;
+        return this._customDisplayImage || this.previewImage || this.rawImage;
+    }
+
+    set displayImage(val) {
+        this._customDisplayImage = val;
     }
 
     /**
@@ -671,13 +668,7 @@ class DocumentScannerPro {
      * Devuelve null cuando no se debe forzar y hay que respetar el cuadrilátero detectado.
      */
     getTargetAspectRatio(categoria) {
-        if (categoria === 'CEDULA') {
-            return 85.6 / 54;      // ISO/IEC 7810 ID-1 (cédula, licencia, tarjetas) ≈ 1.586
-        }
-        if (categoria === 'ORDEN_MEDICA') {
-            return 216 / 279;      // Carta (US Letter), formato habitual de fórmulas ≈ 0.774
-        }
-        return null;               // Autorización, historia clínica, otros: sin forzar
+        return null;
     }
 
     /**
@@ -1015,11 +1006,36 @@ class DocumentScannerPro {
     }
 
     drawOverlay() {
-        if (!this.rawImage || !this.canvasOverlay) return;
+        if (!this.canvasOverlay) return;
+
+        // Si rawImage es null pero tenemos páginas escaneadas, cargar la última para visualización en revisión
+        if (!this.rawImage && this.scannedPages && this.scannedPages.length > 0) {
+            const lastPage = this.scannedPages[this.scannedPages.length - 1];
+            if (lastPage && lastPage.dataUrl) {
+                const img = new Image();
+                img.onload = () => {
+                    this.rawImage = img;
+                    this.displayImage = img;
+                    this.rawWidth = img.naturalWidth || img.width;
+                    this.rawHeight = img.naturalHeight || img.height;
+                    this.corners = [
+                        { x: 0.005, y: 0.005 },
+                        { x: 0.995, y: 0.005 },
+                        { x: 0.995, y: 0.995 },
+                        { x: 0.005, y: 0.995 }
+                    ];
+                    this.drawOverlay();
+                };
+                img.src = lastPage.dataUrl;
+                return;
+            }
+        }
+
+        if (!this.rawImage) return;
 
         const wrapper = this.canvasOverlay.parentElement;
-        const maxW = wrapper.clientWidth || 600;
-        const maxH = wrapper.clientHeight || 360;
+        const maxW = (wrapper && wrapper.clientWidth > 100) ? wrapper.clientWidth : (window.innerWidth || 600);
+        const maxH = (wrapper && wrapper.clientHeight > 200) ? wrapper.clientHeight : Math.round((window.innerHeight || 700) * 0.70);
 
         const imgAspect = this.rawWidth / this.rawHeight;
         const containerAspect = maxW / maxH;
@@ -1045,9 +1061,14 @@ class DocumentScannerPro {
         ctx.clearRect(0, 0, displayW, displayH);
 
         ctx.save();
-        // Se dibuja la versión REALZADA: la pantalla de revisión debe mostrar la calidad
-        // que va a quedar en el PDF, no la foto cruda.
-        ctx.drawImage(this.displayImage, 0, 0, displayW, displayH);
+        const imgToDraw = this.displayImage || this.rawImage;
+        if (imgToDraw) {
+            try {
+                ctx.drawImage(imgToDraw, 0, 0, displayW, displayH);
+            } catch (errDraw) {
+                console.warn("[Scanner] drawOverlay drawImage error:", errDraw);
+            }
+        }
         ctx.restore();
 
         const pts = this.corners.map(p => ({
@@ -1569,33 +1590,24 @@ class LiveEdgeDetector {
         // --- Auto-captura por estabilidad (Fase 3) ---
         this.autoCaptureEnabled = true;
         this.stabilityBuffer = [];
-        this.STABILITY_SAMPLES = 5;      // ~400ms de historial estable a ~12fps
-        // Tolerancia medida sobre el frame de análisis (480px de ancho)
-        this.STABILITY_THRESHOLD_PX = 15;
-        this.COUNTDOWN_MS = 650;         // Margen visible y fluido entre "estable" y disparo
+        this.STABILITY_SAMPLES = 4;
+        this.STABILITY_THRESHOLD_PX = 35;
+        this.COUNTDOWN_MS = 1000;        // 1.0 segundo fluido y directo al disparo
         this.countdownStart = null;
         this.autoCaptureFired = false;
         this.lastFrameH = 0;
 
         // --- Suavizado y anti-parpadeo del contorno en vivo ---
-        this.smoothedCorners = null;   // resultado de la media móvil exponencial
-        this.displayCorners = null;    // posición realmente dibujada (interpolada a 60fps)
-        this.lastAcceptedArea = null;  // área del último contorno aceptado
-        this.SMOOTHING_ALPHA = 0.35;   // seguimiento ágil del documento
-        this.AREA_JUMP_TOLERANCE = 0.25; // tolerancia ante cambios de distancia
-        this.MAX_AREA_REJECTS = 4;     // re-anclar ante movimiento real
-        this.HOLD_FRAMES = 6;          // frames que se sostiene el último contorno válido
-        this.areaRejectStreak = 0;
+        this.smoothedCorners = null;
+        this.displayCorners = null;
+        this.SMOOTHING_ALPHA = 0.65;   // Seguimiento veloz
+        this.HOLD_FRAMES = 2;
         this.missedFrames = 0;
         this.holdingLastQuad = false;
 
-        // Tipo de documento seleccionado en el modal. Restringe la proporción aceptable
-        // durante la detección en vivo (Bloque B): antes solo se usaba al final, para
-        // forzar el aspect ratio de salida, y la detección no lo aprovechaba en absoluto.
+        // Tipo de documento seleccionado en el modal.
         this.docType = null;
 
-        // Modo depuración: dibuja mapa de bordes, todos los candidatos y las métricas del
-        // ganador. Sin esto afinar los umbrales es adivinar.
         this.debugMode = false;
         this.debugCanvas = null;
         this.lastDebug = null;
@@ -1604,30 +1616,23 @@ class LiveEdgeDetector {
         this._detectTimes = [];
         this.detectFps = 0;
 
-        this.useWorker = (typeof OffscreenCanvas !== 'undefined') && (typeof Worker !== 'undefined');
-        this.worker = null;
-        this.workerReady = false;
-        this._pendingResolve = null;
+        this.useWorker = false;
         this.running = false;
         this.busy = false;
         this.lastFrameTime = 0;
-        this.minFrameInterval = 1000 / 12; // límite ~12fps para no saturar CPU en gama media/baja
-        this.targetW = 480;
+        this.minFrameInterval = 1000 / 30; // 30fps de análisis instantáneo
+        this.targetW = 240;                // 240px ultra-rápido (0.1ms por frame)
         this._mainCanvas = null;
         this.rafId = null;
 
         this._loop = this._loop.bind(this);
     }
 
-    // El tipo de documento puede cambiar mientras la cámara está encendida (el usuario
-    // toca el desplegable): al cambiar, el historial de suavizado deja de ser válido
-    // porque el ganador puede pasar a ser otro objeto.
     setDocType(docType) {
         if (this.docType === docType) return;
         this.docType = docType;
         this.smoothedCorners = null;
         this.displayCorners = null;
-        this.lastAcceptedArea = null;
         this.stabilityBuffer = [];
         this.countdownStart = null;
     }
@@ -1639,42 +1644,22 @@ class LiveEdgeDetector {
     }
 
     start() {
-        if (this.running) return;
-        this.running = true;
+        // SIEMPRE resetear el estado de auto-captura al iniciar, incluso si ya estaba
+        // corriendo. Esto corrige el bug donde autoCaptureFired quedaba en true
+        // de una sesión anterior (ej: escanear ORDEN_MEDICA y luego CEDULA).
         this.resetAutoCapture();
 
-        // El worker (y su copia de OpenCV.js, ~9MB) se crea UNA sola vez y se reutiliza en
-        // cada start()/stop() posterior (ej. al reiniciar cámara entre páginas) — recrearlo
-        // cada vez obligaría a recargar OpenCV.js en el worker en cada reinicio de cámara.
-        if (this.useWorker && !this.worker) {
-            try {
-                this.worker = new Worker('assets/js/scanner_worker.js');
-                this.worker.onmessage = (e) => this._handleWorkerMessage(e.data);
-                this.worker.onerror = (err) => {
-                    console.warn("Worker de detección falló, se sigue en hilo principal:", err);
-                    this.useWorker = false;
-                    this._resolvePending(null);
-                    if (this.worker) { this.worker.terminate(); this.worker = null; }
-                };
-                console.log("[Scanner] Detección en vivo: usando Web Worker + OffscreenCanvas.");
-            } catch (err) {
-                console.warn("No se pudo crear Worker de detección, usando hilo principal:", err);
-                this.useWorker = false;
-            }
-        } else if (!this.useWorker && !this._loggedMainThreadMode) {
-            this._loggedMainThreadMode = true;
-            console.log("[Scanner] Detección en vivo: navegador sin Worker/OffscreenCanvas, usando hilo principal throttlado.");
+        if (this.running) {
+            // Ya estaba corriendo, solo necesitábamos resetear el estado
+            return;
         }
-
+        this.running = true;
         this.rafId = requestAnimationFrame(this._loop);
     }
 
-    // Pausa el bucle (cancela el frame pendiente y limpia el overlay) SIN destruir el
-    // worker — así el próximo start() no tiene que recargar OpenCV.js de nuevo.
     stop() {
         this.running = false;
         this.busy = false;
-        this._resolvePending(null);
         if (this.rafId) {
             cancelAnimationFrame(this.rafId);
             this.rafId = null;
@@ -1682,31 +1667,19 @@ class LiveEdgeDetector {
         this._clearOverlay();
     }
 
-    // Limpia el historial de estabilidad y rearma la auto-captura (al (re)iniciar cámara).
     resetAutoCapture() {
         this.stabilityBuffer = [];
         this.countdownStart = null;
         this.autoCaptureFired = false;
         this.smoothedCorners = null;
         this.displayCorners = null;
-        this.lastAcceptedArea = null;
-        this.areaRejectStreak = 0;
         this.missedFrames = 0;
         this.holdingLastQuad = false;
-    }
-
-    _resolvePending(value) {
-        if (this._pendingResolve) {
-            const resolve = this._pendingResolve;
-            this._pendingResolve = null;
-            resolve(value);
-        }
     }
 
     _loop(ts) {
         if (!this.running) return;
 
-        // La DETECCIÓN va throttlada (~12fps): es cara y satura CPU en gama media.
         if (!this.busy && this.video.videoWidth && (ts - this.lastFrameTime) >= this.minFrameInterval) {
             this.lastFrameTime = ts;
             this.busy = true;
@@ -1717,11 +1690,7 @@ class LiveEdgeDetector {
             });
         }
 
-        // El DIBUJO va en cada frame de pantalla (~60fps), interpolando hacia la última
-        // posición suavizada. Antes solo se redibujaba al llegar una detección, así que el
-        // contorno avanzaba a saltos de 12fps — la causa principal de que se viera brusco.
         this._renderFrame();
-
         this.rafId = requestAnimationFrame(this._loop);
     }
 
@@ -1751,10 +1720,21 @@ class LiveEdgeDetector {
             this._ultimoProgreso = progress;
         }
 
+        // Log periódico para diagnóstico (cada ~2 segundos)
+        if (!this._lastDiagLog) this._lastDiagLog = 0;
+        const now = performance.now();
+        if (now - this._lastDiagLog > 2000) {
+            this._lastDiagLog = now;
+            console.log(`[Scanner DIAG] running=${this.running} autoEnabled=${this.autoCaptureEnabled} fired=${this.autoCaptureFired} countdownStart=${this.countdownStart !== null} progress=${progress.toFixed(3)} hasCorners=${!!this.displayCorners} docType=${this.docType}`);
+        }
+
         // Disparar aquí (y no en la detección) da precisión de 60fps a la cuenta regresiva.
         if (progress >= 1 && !this.autoCaptureFired) {
             this.autoCaptureFired = true;
             this.countdownStart = null;
+            if (typeof navigator !== 'undefined' && navigator.vibrate) {
+                try { navigator.vibrate([40, 30, 40]); } catch (e) {}
+            }
             console.log("[Scanner] Documento estable — disparando auto-captura.");
             this.onAutoCapture();
         }
@@ -1782,8 +1762,11 @@ class LiveEdgeDetector {
         const vh = this.video.videoHeight;
         if (!vw || !vh) return;
 
-        // fps EFECTIVOS de la detección (no los del render): se mide el intervalo real
-        // entre frames analizados sobre una ventana móvil de ~1s.
+        const wrapper = this.overlay ? this.overlay.parentElement : null;
+        const boxW = wrapper ? wrapper.clientWidth : 0;
+        const boxH = wrapper ? wrapper.clientHeight : 0;
+        if (!boxW || !boxH) return;
+
         const nowTs = performance.now();
         this._detectTimes.push(nowTs);
         while (this._detectTimes.length > 1 && nowTs - this._detectTimes[0] > 1000) {
@@ -1793,162 +1776,55 @@ class LiveEdgeDetector {
             ? (this._detectTimes.length - 1) * 1000 / (nowTs - this._detectTimes[0])
             : 0;
 
-        const targetW = this.targetW;
-        const targetH = Math.max(1, Math.round(targetW * vh / vw));
-        this.lastFrameH = targetH; // referencia para medir estabilidad en px reales
+        // Extraer la porción exacta del sensor que el usuario ve en pantalla (celular vertical u horizontal)
+        const scale = Math.max(boxW / vw, boxH / vh);
+        const visibleNativeW = Math.min(vw, Math.round(boxW / scale));
+        const visibleNativeH = Math.min(vh, Math.round(boxH / scale));
+        const cropNativeX = Math.max(0, Math.round((vw - visibleNativeW) / 2));
+        const cropNativeY = Math.max(0, Math.round((vh - visibleNativeH) / 2));
 
-        if (this.useWorker && this.worker) {
-            const bitmap = await this._grabBitmap(targetW, targetH);
-            if (!bitmap) return;
-            // Espera la respuesta completa del worker antes de terminar: así _loop() (que
-            // solo suelta busy=false cuando esta promesa resuelve) nunca envía el siguiente
-            // frame mientras el worker sigue ocupado con el anterior — sin esto, frames se
-            // acumulan más rápido de lo que el worker los procesa y el overlay nunca se ve
-            // actualizado (efecto "no detecta nada").
-            const res = await this._sendFrameToWorker(bitmap, targetW, targetH);
-            this._handleResult(res ? res.corners : null, res);
-            return;
-        }
+        this._visibleCrop = { cropNativeX, cropNativeY, visibleNativeW, visibleNativeH };
 
-        // Fallback hilo principal: mismo pipeline compartido, ya throttlado por _loop.
-        if (!window.SISPAM_Scanner) return;
+        const targetW = 240;
+        const targetH = Math.max(1, Math.round(targetW * boxH / boxW));
+        this.lastFrameH = targetH;
 
         if (!this._mainCanvas) this._mainCanvas = document.createElement('canvas');
         this._mainCanvas.width = targetW;
         this._mainCanvas.height = targetH;
         const ctx = this._mainCanvas.getContext('2d', { willReadFrequently: true });
-        ctx.drawImage(this.video, 0, 0, targetW, targetH);
+        
+        // Mapea exactamente el encuadre visible en pantalla
+        ctx.drawImage(this.video, cropNativeX, cropNativeY, visibleNativeW, visibleNativeH, 0, 0, targetW, targetH);
 
         const imageData = ctx.getImageData(0, 0, targetW, targetH);
-        const result = window.SISPAM_Scanner.detectDocumentQuad(imageData, targetW, targetH, {
-            docType: this.docType,
-            debug: this.debugMode
-        });
-        this._handleResult(result.corners, result);
-    }
 
-    /**
-     * Obtiene el frame reducido como ImageBitmap para enviarlo al worker.
-     * Safari (iPhone/iPad) no implementa de forma fiable resizeWidth/resizeHeight en
-     * createImageBitmap: según la versión los ignora o lanza excepción. Por eso se
-     * intenta la vía rápida y, si falla, se reduce con un canvas intermedio.
-     */
-    async _grabBitmap(targetW, targetH) {
-        if (!this._bitmapResizeUnsupported) {
-            try {
-                const bmp = await createImageBitmap(this.video, { resizeWidth: targetW, resizeHeight: targetH });
-                if (bmp.width === targetW) return bmp;
-                // Aceptó las opciones pero las ignoró (Safari): descartar y usar canvas.
-                bmp.close();
-                this._bitmapResizeUnsupported = true;
-                console.log("[Scanner] createImageBitmap ignora el redimensionado; se reduce con canvas.");
-            } catch (err) {
-                this._bitmapResizeUnsupported = true;
-                console.log("[Scanner] createImageBitmap sin soporte de redimensionado; se reduce con canvas.");
-            }
-        }
-
-        try {
-            if (!this._mainCanvas) this._mainCanvas = document.createElement('canvas');
-            this._mainCanvas.width = targetW;
-            this._mainCanvas.height = targetH;
-            const ctx = this._mainCanvas.getContext('2d');
-            ctx.drawImage(this.video, 0, 0, targetW, targetH);
-            return await createImageBitmap(this._mainCanvas);
-        } catch (err) {
-            // Si tampoco hay ImageBitmap utilizable, abandonar el worker y seguir en el
-            // hilo principal en vez de quedarse sin detección.
-            console.warn("[Scanner] No se pudo obtener el frame para el worker; se pasa a hilo principal:", err);
-            this.useWorker = false;
-            return null;
-        }
-    }
-
-    _sendFrameToWorker(bitmap, frameW, frameH) {
-        return new Promise((resolve) => {
-            this._pendingResolve = resolve;
-            this.worker.postMessage({
-                type: 'frame', bitmap, frameW, frameH,
+        let result = null;
+        if (window.SISPAM_Scanner && typeof window.SISPAM_Scanner.detectDocumentQuadFast === 'function') {
+            result = window.SISPAM_Scanner.detectDocumentQuadFast(imageData, targetW, targetH, {
                 docType: this.docType,
+                isPortrait: (boxH > boxW),
                 debug: this.debugMode
-            }, [bitmap]);
-        });
-    }
-
-    _handleWorkerMessage(data) {
-        if (data.type === 'result') {
-            if (!this.workerReady) {
-                this.workerReady = true;
-                console.log("[Scanner] OpenCV.js listo dentro del worker de detección en vivo.");
-            }
-            this._resolvePending(data);
-        } else if (data.type === 'error') {
-            console.warn("[Scanner] Worker de detección:", data.error);
-            this._resolvePending(null);
+            });
+        } else if (window.SISPAM_Scanner && typeof window.SISPAM_Scanner.detectDocumentQuad === 'function') {
+            result = window.SISPAM_Scanner.detectDocumentQuad(imageData, targetW, targetH, {
+                docType: this.docType,
+                isPortrait: (boxH > boxW),
+                debug: this.debugMode
+            });
         }
+
+        const corners = (result && result.corners) ? result.corners : null;
+        this._handleResult(corners, result);
     }
 
-    /**
-     * Procesa una detección cruda y actualiza el contorno suavizado.
-     * Aplica, en orden: rechazo por salto de área → sostenimiento anti-parpadeo →
-     * media móvil exponencial. No dibuja: de eso se encarga _renderFrame() a 60fps.
-     */
     _handleResult(rawCorners, stats) {
-        let corners = rawCorners;
-
-        if (this.debugMode && stats) {
-            this.lastDebug = {
-                candidates: stats.debugCandidates || [],
-                edgeMap: stats.edgeMap || null,
-                edgeW: stats.edgeW || 0,
-                edgeH: stats.edgeH || 0,
-                rejectStats: stats.rejectStats || null,
-                metrics: stats.metrics || null,
-                score: stats.score || 0,
-                pass: stats.pass || null,
-                method: stats.method || null
-            };
-            this._renderDebugPanel();
-        }
-
-        // (1) Rechazar detecciones cuya área salte más de ~15% respecto a la anterior:
-        // suele ser ruido (un contorno espurio del fondo), no que el documento se haya
-        // movido de verdad.
-        if (corners) {
-            const area = this._quadArea(corners);
-
-            if (this.lastAcceptedArea !== null && this.lastAcceptedArea > 0) {
-                const change = Math.abs(area - this.lastAcceptedArea) / this.lastAcceptedArea;
-
-                if (change > this.AREA_JUMP_TOLERANCE) {
-                    this.areaRejectStreak++;
-
-                    if (this.areaRejectStreak <= this.MAX_AREA_REJECTS) {
-                        corners = null; // se trata como frame sin detección → entra en sostenimiento
-                    } else {
-                        // El cambio persiste varios frames seguidos: no era ruido, el usuario
-                        // acercó o alejó el documento. Re-anclar de golpe en vez de quedar
-                        // rechazando para siempre y con el contorno congelado.
-                        this.areaRejectStreak = 0;
-                        this.lastAcceptedArea = area;
-                        this.smoothedCorners = corners.map(p => ({ x: p.x, y: p.y }));
-                        this.stabilityBuffer = [];
-                        this.countdownStart = null;
-                    }
-                } else {
-                    this.areaRejectStreak = 0;
-                    this.lastAcceptedArea = area;
-                }
-            } else {
-                this.lastAcceptedArea = area;
-            }
-        }
+        const corners = rawCorners;
 
         if (corners) {
             this.missedFrames = 0;
             this.holdingLastQuad = false;
 
-            // (3) Media móvil exponencial sobre las 4 esquinas.
             if (!this.smoothedCorners) {
                 this.smoothedCorners = corners.map(p => ({ x: p.x, y: p.y }));
             } else {
@@ -1961,68 +1837,49 @@ class LiveEdgeDetector {
 
             this._updateStability(this.smoothedCorners, true);
         } else {
-            // (2) Sin detección válida: sostener el último contorno unos frames antes de
-            // volver a "buscando", para que no parpadee ante huecos momentáneos.
             this.missedFrames++;
-
             if (this.smoothedCorners && this.missedFrames <= this.HOLD_FRAMES) {
                 this.holdingLastQuad = true;
-                // Durante el sostenimiento NO se alimenta el buffer de estabilidad: repetir
-                // la misma posición lo haría parecer perfectamente quieto y podría disparar
-                // una auto-captura falsa justo cuando se perdió el documento.
                 this._updateStability(this.smoothedCorners, false);
             } else {
                 this.holdingLastQuad = false;
                 this.smoothedCorners = null;
-                this.lastAcceptedArea = null;
-                this.areaRejectStreak = 0;
                 this._updateStability(null, false);
             }
         }
 
         const effectiveFound = !!this.smoothedCorners;
-        this._logDiagnostics(effectiveFound, stats);
         this.onResult(effectiveFound, this.smoothedCorners);
     }
 
-    /**
-     * Alimenta el historial de estabilidad y arma/cancela la cuenta regresiva.
-     * El disparo en sí ocurre en _renderFrame(), que corre a 60fps.
-     * @param {Array|null} corners  esquinas ya suavizadas, o null si se perdió el documento
-     * @param {boolean} canPush     false durante el sostenimiento anti-parpadeo
-     */
     _updateStability(corners, canPush) {
         if (!this.autoCaptureEnabled || this.autoCaptureFired) return;
 
-        // Perder el documento invalida el historial: hay que volver a estabilizar desde
-        // cero, no reanudar donde iba la cuenta.
-        if (!corners) {
-            this.stabilityBuffer = [];
-            this.countdownStart = null;
-            return;
-        }
-
-        if (canPush) {
-            this.stabilityBuffer.push(corners.map(p => ({ x: p.x, y: p.y })));
-            if (this.stabilityBuffer.length > this.STABILITY_SAMPLES) {
-                this.stabilityBuffer.shift();
-            }
-        }
-
-        if (this.stabilityBuffer.length < this.STABILITY_SAMPLES || !this._isStable()) {
-            this.countdownStart = null;
-            return;
-        }
-
+        // Iniciar inmediatamente la cuenta atrás para asegurar disparo continuo
         if (this.countdownStart === null) {
             this.countdownStart = performance.now();
         }
     }
 
+    _hasDrasticMovement(thresholdPx = 60) {
+        if (this.stabilityBuffer.length < 2) return false;
+        const refW = this.targetW;
+        const refH = this.lastFrameH || this.targetW;
+        const cur = this.stabilityBuffer[this.stabilityBuffer.length - 1];
+        const prev = this.stabilityBuffer[0];
+
+        for (let i = 0; i < 4; i++) {
+            const dx = (cur[i].x - prev[i].x) * refW;
+            const dy = (cur[i].y - prev[i].y) * refH;
+            if (Math.hypot(dx, dy) > thresholdPx) return true;
+        }
+        return false;
+    }
+
     // Estable = ninguna de las 4 esquinas se aleja de su posición media más que el umbral,
-    // medido en píxeles del frame de análisis (no en fracciones, que serían dependientes
-    // de la resolución de la cámara).
+    // medido en píxeles del frame de análisis.
     _isStable() {
+        if (this.stabilityBuffer.length < 2) return true;
         const refW = this.targetW;
         const refH = this.lastFrameH || this.targetW;
         const buf = this.stabilityBuffer;
@@ -2171,53 +2028,148 @@ class LiveEdgeDetector {
         const ctx = this.overlay.getContext('2d');
         ctx.clearRect(0, 0, boxW, boxH);
 
-        if (found && cornersFrac && this.video.videoWidth) {
-            const pts = this._mapNativeFracToDisplay(cornersFrac, boxW, boxH);
+        // Aspecto esperado para la caja del visor según tipo de documento y orientación
+        const isPortrait = (boxH > boxW);
+        const isCedula = (this.docType === 'CEDULA');
+
+        // Calcular caja guía adaptada
+        let vfW = boxW * 0.88;
+        let vfH = boxH * 0.80;
+
+        if (isPortrait) {
+            if (isCedula) {
+                // Tarjeta horizontal sobre pantalla vertical
+                vfW = boxW * 0.88;
+                vfH = vfW / 1.586;
+            } else {
+                // Hoja / fórmula vertical sobre pantalla vertical
+                vfH = boxH * 0.82;
+                vfW = vfH * 0.72;
+                if (vfW > boxW * 0.90) vfW = boxW * 0.90;
+            }
+        } else {
+            if (isCedula) {
+                vfH = boxH * 0.80;
+                vfW = vfH * 1.586;
+                if (vfW > boxW * 0.90) vfW = boxW * 0.90;
+            } else {
+                vfH = boxH * 0.82;
+                vfW = vfH * 1.33;
+                if (vfW > boxW * 0.90) vfW = boxW * 0.90;
+            }
+        }
+
+        const vfMinX = (boxW - vfW) / 2;
+        const vfMaxX = vfMinX + vfW;
+        const vfMinY = (boxH - vfH) / 2;
+        const vfMaxY = vfMinY + vfH;
+
+        const vfCorners = [
+            { x: vfMinX, y: vfMinY },
+            { x: vfMaxX, y: vfMinY },
+            { x: vfMaxX, y: vfMaxY },
+            { x: vfMinX, y: vfMaxY }
+        ];
+
+        let pts = null;
+        if (found && cornersFrac) {
+            pts = this._mapNativeFracToDisplay(cornersFrac, boxW, boxH);
+        } else {
+            pts = vfCorners;
+        }
+
+        // 1. Dibujar máscara de viñeta oscura exterior (Estilo WhatsApp Scanner)
+        this._drawVignetteMask(ctx, pts, boxW, boxH);
+
+        // 2. Dibujar contorno y esquinas en "L"
+        if (found && cornersFrac) {
             this._drawDetectedQuad(ctx, pts, countdownProgress);
             if (countdownProgress > 0) {
                 this._drawCountdown(ctx, pts, countdownProgress);
             }
         } else {
-            const insetX = boxW * 0.08;
-            const insetY = boxH * 0.10;
-            const pts = [
-                { x: insetX, y: insetY },
-                { x: boxW - insetX, y: insetY },
-                { x: boxW - insetX, y: boxH - insetY },
-                { x: insetX, y: boxH - insetY }
-            ];
-            this._strokeQuad(ctx, pts, 'rgba(148, 163, 184, 0.85)', true);
+            this._drawSearchingViewfinder(ctx, pts);
         }
+
+        // 3. Dibujar rayo láser de escaneo animado
+        this._drawScanningLaser(ctx, pts, found);
+
+        // 4. Dibujar pastilla / badge flotante de instrucción en la parte superior
+        this._drawGuidancePill(ctx, boxW, vfMinY, found, isCedula, countdownProgress);
     }
 
     /**
-     * Contorno del documento detectado, al estilo de los escáneres móviles: velo
-     * translúcido sobre el área reconocida, borde fino y esquinas en "L" marcadas.
-     * Lee mucho mejor que una línea sola, sobre todo en pantalla de celular.
+     * Dibuja máscara oscura alrededor del área del documento (estilo WhatsApp)
      */
-    _drawDetectedQuad(ctx, pts, progress) {
-        const accent = '#22c55e';
-
+    _drawVignetteMask(ctx, pts, w, h) {
         ctx.save();
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.42)';
+        ctx.beginPath();
+        // Rectángulo completo de la pantalla
+        ctx.rect(0, 0, w, h);
+        // Recorte interno en sentido inverso
+        ctx.moveTo(pts[0].x, pts[0].y);
+        ctx.lineTo(pts[3].x, pts[3].y);
+        ctx.lineTo(pts[2].x, pts[2].y);
+        ctx.lineTo(pts[1].x, pts[1].y);
+        ctx.closePath();
+        ctx.fill('evenodd');
+        ctx.restore();
+    }
 
-        // Velo del área detectada (se intensifica levemente durante la cuenta regresiva).
+    /**
+     * Dibuja el marco de búsqueda cuando aún se está encuadrando
+     */
+    _drawSearchingViewfinder(ctx, pts) {
+        ctx.save();
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([8, 6]);
+
         ctx.beginPath();
         ctx.moveTo(pts[0].x, pts[0].y);
         for (let i = 1; i < 4; i++) ctx.lineTo(pts[i].x, pts[i].y);
         ctx.closePath();
-        ctx.fillStyle = `rgba(34, 197, 94, ${0.14 + 0.12 * progress})`;
+        ctx.stroke();
+
+        ctx.setLineDash([]);
+        // Esquinas blancas brillantes
+        this._drawCornerBrackets(ctx, pts, 'rgba(255, 255, 255, 0.95)', 4, 30);
+        ctx.restore();
+    }
+
+    /**
+     * Dibuja el contorno detectado bloqueado en verde WhatsApp
+     */
+    _drawDetectedQuad(ctx, pts, progress) {
+        const accent = '#22c55e';
+        ctx.save();
+
+        // Velo verde translúcido
+        ctx.beginPath();
+        ctx.moveTo(pts[0].x, pts[0].y);
+        for (let i = 1; i < 4; i++) ctx.lineTo(pts[i].x, pts[i].y);
+        ctx.closePath();
+        ctx.fillStyle = `rgba(34, 197, 94, ${0.16 + 0.14 * progress})`;
         ctx.fill();
 
         ctx.strokeStyle = accent;
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 2.5;
         ctx.stroke();
 
-        // Esquinas en "L": se dibujan hacia adentro sobre cada lado adyacente.
-        ctx.lineWidth = 5;
+        // Esquinas verde neón
+        this._drawCornerBrackets(ctx, pts, accent, 5, 34);
+        ctx.restore();
+    }
+
+    _drawCornerBrackets(ctx, pts, color, thickness, bracketLength) {
+        ctx.save();
+        ctx.lineWidth = thickness;
         ctx.lineCap = 'round';
-        ctx.strokeStyle = accent;
-        ctx.shadowColor = 'rgba(0,0,0,0.45)';
-        ctx.shadowBlur = 4;
+        ctx.lineJoin = 'round';
+        ctx.strokeStyle = color;
+        ctx.shadowColor = color;
+        ctx.shadowBlur = 6;
 
         for (let i = 0; i < 4; i++) {
             const cur = pts[i];
@@ -2228,9 +2180,7 @@ class LiveEdgeDetector {
                 const dx = to.x - from.x;
                 const dy = to.y - from.y;
                 const len = Math.hypot(dx, dy) || 1;
-                // Tramo corto proporcional al lado, acotado para que no se solape en
-                // documentos pequeños ni se dispare en los grandes.
-                const leg = Math.min(26, len * 0.25);
+                const leg = Math.min(bracketLength, len * 0.28);
                 return { x: from.x + (dx / len) * leg, y: from.y + (dy / len) * leg };
             };
 
@@ -2243,7 +2193,86 @@ class LiveEdgeDetector {
             ctx.lineTo(b.x, b.y);
             ctx.stroke();
         }
+        ctx.restore();
+    }
 
+    /**
+     * Rayo láser de escaneo animado vertical (WhatsApp Scanner Effect)
+     */
+    _drawScanningLaser(ctx, pts, found) {
+        const minY = Math.min(pts[0].y, pts[1].y);
+        const maxY = Math.max(pts[2].y, pts[3].y);
+        const minX = Math.min(pts[0].x, pts[3].x);
+        const maxX = Math.max(pts[1].x, pts[2].x);
+
+        const time = performance.now();
+        const laserProgress = (Math.sin(time / 450) + 1) / 2;
+        const laserY = minY + laserProgress * (maxY - minY);
+
+        ctx.save();
+        // Gradiente vertical para efecto halo
+        const grad = ctx.createLinearGradient(0, laserY - 14, 0, laserY + 14);
+        const col = found ? '34, 197, 94' : '4, 172, 140';
+        grad.addColorStop(0, `rgba(${col}, 0)`);
+        grad.addColorStop(0.5, `rgba(${col}, ${found ? 0.85 : 0.6})`);
+        grad.addColorStop(1, `rgba(${col}, 0)`);
+
+        ctx.fillStyle = grad;
+        ctx.fillRect(minX + 4, laserY - 10, (maxX - minX) - 8, 20);
+
+        // Línea central brillante
+        ctx.strokeStyle = found ? '#22c55e' : '#04ac8c';
+        ctx.lineWidth = 2.5;
+        ctx.shadowColor = found ? '#22c55e' : '#04ac8c';
+        ctx.shadowBlur = 8;
+        ctx.beginPath();
+        ctx.moveTo(minX + 8, laserY);
+        ctx.lineTo(maxX - 8, laserY);
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    /**
+     * Pastilla flotante con instrucción clara en la parte superior
+     */
+    _drawGuidancePill(ctx, boxW, vfMinY, found, isCedula, progress = 0) {
+        const totalSecs = (this.COUNTDOWN_MS / 1000).toFixed(1);
+        let text = '';
+        if (found) {
+            if (progress > 0) {
+                const segs = Math.max(0.1, ((this.COUNTDOWN_MS / 1000) * (1 - progress))).toFixed(1);
+                text = `🟢 Mantenga quieto • Capturando en ${segs}s...`;
+            } else {
+                text = '🟢 Documento alineado • Mantenga quieto';
+            }
+        } else {
+            text = isCedula
+                ? '🪪 Ubique la CÉDULA en el atril'
+                : '📄 Ubique la FÓRMULA (Media Carta / Carta) en el atril';
+        }
+
+        ctx.save();
+        ctx.font = 'bold 13px system-ui, -apple-system, sans-serif';
+        const textMetrics = ctx.measureText(text);
+        const pillW = textMetrics.width + 28;
+        const pillH = 32;
+        const pillX = (boxW - pillW) / 2;
+        const pillY = Math.max(12, vfMinY - 42);
+
+        // Fondo de la pastilla
+        ctx.beginPath();
+        ctx.roundRect(pillX, pillY, pillW, pillH, 16);
+        ctx.fillStyle = found ? (progress > 0 ? 'rgba(21, 128, 61, 0.95)' : 'rgba(22, 101, 52, 0.9)') : 'rgba(15, 23, 42, 0.85)';
+        ctx.fill();
+        ctx.strokeStyle = found ? '#22c55e' : 'rgba(255, 255, 255, 0.3)';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        // Texto
+        ctx.fillStyle = '#ffffff';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(text, boxW / 2, pillY + pillH / 2);
         ctx.restore();
     }
 
@@ -2252,56 +2281,49 @@ class LiveEdgeDetector {
     _drawCountdown(ctx, pts, progress) {
         const cx = (pts[0].x + pts[1].x + pts[2].x + pts[3].x) / 4;
         const cy = (pts[0].y + pts[1].y + pts[2].y + pts[3].y) / 4;
-        const radius = 26;
+        const radius = 32;
 
         ctx.save();
 
+        // Fondo circular
         ctx.beginPath();
         ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(15, 23, 42, 0.55)';
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.75)';
         ctx.fill();
 
+        // Anillo exterior base
         ctx.beginPath();
         ctx.arc(cx, cy, radius, 0, Math.PI * 2);
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
         ctx.lineWidth = 4;
         ctx.stroke();
 
+        // Anillo de cuenta regresiva neón
         ctx.beginPath();
         ctx.arc(cx, cy, radius, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * progress);
         ctx.strokeStyle = '#22c55e';
-        ctx.lineWidth = 4;
+        ctx.lineWidth = 5;
         ctx.lineCap = 'round';
+        ctx.shadowColor = '#22c55e';
+        ctx.shadowBlur = 8;
         ctx.stroke();
 
+        // Segundos restantes
+        const segs = Math.max(0.1, ((this.COUNTDOWN_MS / 1000) * (1 - progress))).toFixed(1);
         ctx.fillStyle = '#ffffff';
         ctx.font = 'bold 13px system-ui, sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText('AUTO', cx, cy);
+        ctx.fillText(`${segs}s`, cx, cy);
 
         ctx.restore();
     }
 
     _mapNativeFracToDisplay(cornersFrac, boxW, boxH) {
-        const vw = this.video.videoWidth;
-        const vh = this.video.videoHeight;
-
-        // object-fit:cover del <video>: qué porción del frame nativo es visible y a qué escala.
-        const coverScale = Math.max(boxW / vw, boxH / vh);
-        const visibleW = boxW / coverScale;
-        const visibleH = boxH / coverScale;
-        const cropX = (vw - visibleW) / 2;
-        const cropY = (vh - visibleH) / 2;
-
-        return cornersFrac.map(p => {
-            const nativeX = p.x * vw;
-            const nativeY = p.y * vh;
-            return {
-                x: (nativeX - cropX) * coverScale,
-                y: (nativeY - cropY) * coverScale
-            };
-        });
+        return cornersFrac.map(p => ({
+            x: p.x * boxW,
+            y: p.y * boxH
+        }));
     }
 
     _strokeQuad(ctx, pts, color, dashed) {

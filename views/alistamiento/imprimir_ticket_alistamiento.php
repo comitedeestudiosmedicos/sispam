@@ -131,7 +131,7 @@ $rawbt_direct_uri = "rawbt:" . base64_encode($clean_host_url);
 <body>
 
 <div style="max-width: 340px; margin: 0 auto;">
-    <a href="<?= $rawbt_intent ?>" class="btn-print btn-rawbt no-print">📱 IMPRIMIR EN TABLET CON RAWBT (BLUETOOTH / OTG)</a>
+   <a href="<?= $rawbt_direct_uri ?>" class="btn-print btn-rawbt no-print">📱 IMPRIMIR EN TABLET CON RAWBT (BLUETOOTH / OTG)</a>
     <button class="btn-print no-print" onclick="window.print()">🖨️ IMPRIMIR NATIVO (WIFI / RED / PC)</button>
 </div>
 

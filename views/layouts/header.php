@@ -87,14 +87,14 @@ require_once __DIR__ . '/../../config/app.php';
                             <i class="fa-solid fa-notes-medical text-primary"></i>
                             <span>Flujo Asistencial</span>
                         </a>
-                        <ul class="dropdown-menu sispam-dropdown-menu mt-1" aria-labelledby="dropOperativo" style="min-width: 250px;">
+                        <ul class="dropdown-menu sispam-dropdown-menu mt-1" aria-labelledby="dropOperativo" style="min-width: 260px;">
                             <?php if ($has_ingreso): ?>
                             <li>
                                 <a class="sispam-dropdown-item <?= $curr_page === 'ingreso' ? 'active' : '' ?>" href="index.php?page=ingreso">
-                                    <i class="fa-solid fa-user-plus me-2 text-primary"></i>
+                                    <i class="fa-solid fa-user-plus me-2 text-primary fs-6"></i>
                                     <div>
                                         <div class="fw-bold">1. Admisión & Triage</div>
-                                        <small class="text-muted" style="font-size: 0.72rem;">Ingreso de pacientes y turnos</small>
+                                        <small class="sispam-item-subtext">Ingreso de pacientes y turnos</small>
                                     </div>
                                 </a>
                             </li>
@@ -103,10 +103,10 @@ require_once __DIR__ . '/../../config/app.php';
                             <?php if ($has_transcripcion): ?>
                             <li>
                                 <a class="sispam-dropdown-item <?= $curr_page === 'transcripcion' ? 'active' : '' ?>" href="index.php?page=transcripcion">
-                                    <i class="fa-solid fa-file-signature me-2 text-info"></i>
+                                    <i class="fa-solid fa-file-signature me-2 text-info fs-6"></i>
                                     <div>
                                         <div class="fw-bold">2. Transcripción & Stock</div>
-                                        <small class="text-muted" style="font-size: 0.72rem;">Validación de fórmulas y saldo</small>
+                                        <small class="sispam-item-subtext">Validación de fórmulas y saldo</small>
                                     </div>
                                 </a>
                             </li>
@@ -115,10 +115,10 @@ require_once __DIR__ . '/../../config/app.php';
                             <?php if ($has_monitoreo): ?>
                             <li>
                                 <a class="sispam-dropdown-item <?= $curr_page === 'monitoreo' ? 'active' : '' ?>" href="index.php?page=monitoreo">
-                                    <i class="fa-solid fa-eye me-2 text-warning"></i>
+                                    <i class="fa-solid fa-eye me-2 text-warning fs-6"></i>
                                     <div>
                                         <div class="fw-bold">3. Monitoreo Técnico</div>
-                                        <small class="text-muted" style="font-size: 0.72rem;">Verificación de Regente / Químico</small>
+                                        <small class="sispam-item-subtext">Verificación de Regente / Químico</small>
                                     </div>
                                 </a>
                             </li>
@@ -127,10 +127,10 @@ require_once __DIR__ . '/../../config/app.php';
                             <?php if ($has_alistamiento): ?>
                             <li>
                                 <a class="sispam-dropdown-item <?= $curr_page === 'alistamiento' ? 'active' : '' ?>" href="index.php?page=alistamiento">
-                                    <i class="fa-solid fa-box-archive me-2 text-success"></i>
+                                    <i class="fa-solid fa-box-archive me-2 text-success fs-6"></i>
                                     <div>
                                         <div class="fw-bold">4. Alistamiento (Picking)</div>
-                                        <small class="text-muted" style="font-size: 0.72rem;">Preparación física de medicamentos</small>
+                                        <small class="sispam-item-subtext">Preparación física de medicamentos</small>
                                     </div>
                                 </a>
                             </li>
@@ -139,10 +139,10 @@ require_once __DIR__ . '/../../config/app.php';
                             <?php if ($has_entrega): ?>
                             <li>
                                 <a class="sispam-dropdown-item <?= $curr_page === 'entrega' ? 'active' : '' ?>" href="index.php?page=entrega">
-                                    <i class="fa-solid fa-hand-holding-medical me-2 text-danger"></i>
+                                    <i class="fa-solid fa-hand-holding-medical me-2 text-danger fs-6"></i>
                                     <div>
                                         <div class="fw-bold">5. Entrega & Factura</div>
-                                        <small class="text-muted" style="font-size: 0.72rem;">Llamado a ventanilla y firma digital</small>
+                                        <small class="sispam-item-subtext">Llamado a ventanilla y firma digital</small>
                                     </div>
                                 </a>
                             </li>
@@ -198,19 +198,19 @@ require_once __DIR__ . '/../../config/app.php';
                     <ul class="dropdown-menu sispam-dropdown-menu mt-1" aria-labelledby="dropTurneros" style="min-width: 220px;">
                         <li>
                             <a class="sispam-dropdown-item" href="index.php?page=turnero1" target="_blank">
-                                <i class="fa-solid fa-desktop me-2 text-info"></i>
+                                <i class="fa-solid fa-desktop me-2 text-info fs-6"></i>
                                 <div>
                                     <div class="fw-bold">Turnero 1</div>
-                                    <small class="text-muted" style="font-size: 0.72rem;">Pantalla En Proceso</small>
+                                    <small class="sispam-item-subtext">Pantalla En Proceso</small>
                                 </div>
                             </a>
                         </li>
                         <li>
                             <a class="sispam-dropdown-item" href="index.php?page=turnero2" target="_blank">
-                                <i class="fa-solid fa-bullhorn me-2 text-danger"></i>
+                                <i class="fa-solid fa-bullhorn me-2 text-danger fs-6"></i>
                                 <div>
                                     <div class="fw-bold">Turnero 2</div>
-                                    <small class="text-muted" style="font-size: 0.72rem;">Pantalla Listo Entrega (Audio)</small>
+                                    <small class="sispam-item-subtext">Pantalla Listo Entrega (Audio)</small>
                                 </div>
                             </a>
                         </li>
@@ -306,15 +306,15 @@ require_once __DIR__ . '/../../config/app.php';
                     </button>
                     <?php if ($can_switch_sede): ?>
                     <ul class="dropdown-menu sispam-dropdown-menu dropdown-menu-end mt-1" aria-labelledby="dropdownSede" style="min-width: 250px;">
-                        <li class="dropdown-header text-uppercase fw-bold text-muted small px-3 py-1" style="font-size: 0.68rem;">
+                        <li class="dropdown-header text-uppercase fw-bold text-info px-3 py-2" style="font-size: 0.72rem; letter-spacing: 0.5px;">
                             <i class="fa-solid fa-shuffle me-1 text-warning"></i> Cambiar Sede de Trabajo
                         </li>
                         <?php foreach ($mis_sedes as $s): ?>
                         <li>
                             <a class="sispam-dropdown-item justify-content-between <?= $s['id'] == $active_sede_id ? 'active' : '' ?>" href="index.php?cambiar_sede_id=<?= $s['id'] ?>">
-                                <span><i class="fa-solid fa-building me-2 <?= $s['id'] == $active_sede_id ? 'text-white' : 'text-warning' ?>"></i> <?= htmlspecialchars($s['nombre_sede']) ?></span>
+                                <span class="fw-semibold"><i class="fa-solid fa-building me-2 <?= $s['id'] == $active_sede_id ? 'text-white' : 'text-warning' ?>"></i> <?= htmlspecialchars($s['nombre_sede']) ?></span>
                                 <?php if ($s['id'] == $active_sede_id): ?>
-                                    <i class="fa-solid fa-check ms-2"></i>
+                                    <i class="fa-solid fa-circle-check ms-2 text-white"></i>
                                 <?php endif; ?>
                             </a>
                         </li>

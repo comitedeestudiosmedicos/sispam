@@ -217,13 +217,60 @@ class Ingreso {
                 }
             }
             $ingreso['documentos'] = $docs;
+
+            // Extraer y normalizar lista de PDFs de transcripción
+            $transcripciones = [];
+            if (!empty($ingreso['pdf_transcripciones_json'])) {
+                $decoded = json_decode($ingreso['pdf_transcripciones_json'], true);
+                if (is_array($decoded)) {
+                    $transcripciones = $decoded;
+                }
+            }
+            if (empty($transcripciones) && !empty($ingreso['pdf_transcripcion_url'])) {
+                $transcripciones[] = [
+                    'url' => $ingreso['pdf_transcripcion_url'],
+                    'nombre' => 'Orden Transcrita Principal',
+                    'indice' => 1
+                ];
+            }
+            foreach ($docs as $d) {
+                if (($d['tipo_documento'] ?? '') === 'TRANSCRIPCION') {
+                    $existe = false;
+                    foreach ($transcripciones as $t) {
+                        if ($t['url'] === $d['ruta_archivo']) {
+                            $existe = true;
+                            break;
+                        }
+                    }
+                    if (!$existe) {
+                        $transcripciones[] = [
+                            'url' => $d['ruta_archivo'],
+                            'nombre' => $d['nombre_original'] ?: ('Transcripción #' . (count($transcripciones) + 1)),
+                            'indice' => count($transcripciones) + 1
+                        ];
+                    }
+                }
+            }
+            $ingreso['transcripciones_archivos'] = $transcripciones;
         }
 
         return $ingreso;
     }
 
-    // Lista de trabajo para Transcripción (Módulo 2)
-    public function getListaTranscripcion() {
+    private function asegurarColumnasTranscripcion() {
+        try {
+            $cols = $this->db->query("SHOW COLUMNS FROM ingresos LIKE 'pdf_transcripciones_json'")->fetchAll();
+            if (count($cols) === 0) {
+                $this->db->exec("ALTER TABLE ingresos ADD COLUMN pdf_transcripciones_json TEXT NULL AFTER pdf_transcripcion_url");
+            }
+        } catch (Exception $e) {}
+        try {
+            $this->db->exec("ALTER TABLE ingreso_documentos MODIFY COLUMN tipo_documento VARCHAR(100) NOT NULL DEFAULT 'OTRO'");
+        } catch (Exception $e) {}
+    }
+
+    // Lista de trabajo para Transcripción (Módulo 2 - Centralizado Multisede)
+    public function getListaTranscripcion($filtro_sede = null) {
         $sql = "
             SELECT i.*, p.tipo_documento, p.numero_documento, p.nombres, p.apellidos, p.eps_nombre,
                    u.nombre_completo AS orientador_nombre,
@@ -238,10 +285,10 @@ class Ingreso {
             WHERE i.estado_tramite IN ('INGRESADO', 'EN_TRANSCRIPCION')";
 
         $params = [];
-        $active_sede = $_SESSION['active_sede_id'] ?? $_SESSION['sede_id'] ?? null;
-        if (!empty($active_sede)) {
-            $sql .= " AND (i.sede_id IS NULL OR i.sede_id = :sede_id)";
-            $params[':sede_id'] = $active_sede;
+        // Transcripción es un proceso centralizado que procesa todas las sedes para máxima agilidad
+        if (!empty($filtro_sede) && $filtro_sede !== 'TODAS') {
+            $sql .= " AND i.sede_id = :sede_id";
+            $params[':sede_id'] = $filtro_sede;
         }
 
         $sql .= " ORDER BY IF(i.prioridad = 'NORMAL', 1, 0) ASC, i.fecha_ingreso ASC";
@@ -295,35 +342,92 @@ class Ingreso {
         return $stmt->execute([':id' => $ingreso_id]);
     }
 
-    public function guardarTranscripcion($ingreso_id, $pdf_file = null, $user_id = null, $contiene_mipres = null) {
+    public function guardarTranscripcion($ingreso_id, $pdf_files = null, $user_id = null, $contiene_mipres = null) {
+        $this->asegurarColumnasTranscripcion();
         $ingreso = $this->getById($ingreso_id);
-        $ruta_pdf = null;
+        if (!$ingreso) return false;
 
-        if ($pdf_file && isset($pdf_file['tmp_name']) && is_uploaded_file($pdf_file['tmp_name'])) {
-            $rel_dir = 'assets/uploads/pacientes/' . $ingreso['tipo_documento'] . '_' . $ingreso['numero_documento'] . '/transcripciones/';
-            $full_dir = BASE_DIR . '/' . $rel_dir;
-            if (!file_exists($full_dir)) {
-                mkdir($full_dir, 0755, true);
+        $rutas_pdfs = [];
+        $primer_pdf = null;
+
+        if ($pdf_files) {
+            $files_list = [];
+            // Detectar si es un array múltiple de archivos
+            if (isset($pdf_files['name']) && is_array($pdf_files['name'])) {
+                $total = count($pdf_files['name']);
+                for ($i = 0; $i < $total; $i++) {
+                    if (!empty($pdf_files['tmp_name'][$i]) && is_uploaded_file($pdf_files['tmp_name'][$i])) {
+                        $files_list[] = [
+                            'name'     => $pdf_files['name'][$i],
+                            'tmp_name' => $pdf_files['tmp_name'][$i],
+                            'type'     => $pdf_files['type'][$i] ?? 'application/pdf',
+                            'size'     => $pdf_files['size'][$i] ?? 0,
+                        ];
+                    }
+                }
+            } elseif (isset($pdf_files['tmp_name']) && is_uploaded_file($pdf_files['tmp_name'])) {
+                $files_list[] = $pdf_files;
             }
-            $filename = 'transcripcion_' . $ingreso['ticket_numero'] . '_' . time() . '.pdf';
-            if (move_uploaded_file($pdf_file['tmp_name'], $full_dir . $filename)) {
-                $ruta_pdf = $rel_dir . $filename;
+
+            if (!empty($files_list)) {
+                $rel_dir = 'assets/uploads/pacientes/' . $ingreso['tipo_documento'] . '_' . $ingreso['numero_documento'] . '/transcripciones/';
+                $full_dir = BASE_DIR . '/' . $rel_dir;
+                if (!file_exists($full_dir)) {
+                    mkdir($full_dir, 0755, true);
+                }
+
+                foreach ($files_list as $idx => $f) {
+                    $origName = $f['name'];
+                    $ext = strtolower(pathinfo($origName, PATHINFO_EXTENSION)) ?: 'pdf';
+                    $cleanName = preg_replace('/[^a-zA-Z0-9_-]/', '_', pathinfo($origName, PATHINFO_FILENAME));
+                    $filename = 'transcripcion_' . $ingreso['ticket_numero'] . '_' . time() . '_' . ($idx + 1) . '_' . $cleanName . '.' . $ext;
+                    
+                    if (move_uploaded_file($f['tmp_name'], $full_dir . $filename)) {
+                        $ruta = $rel_dir . $filename;
+                        $rutas_pdfs[] = [
+                            'url'    => $ruta,
+                            'nombre' => $origName,
+                            'indice' => $idx + 1
+                        ];
+
+                        // Insertar en ingreso_documentos con tipo TRANSCRIPCION
+                        try {
+                            $stmtDoc = $this->db->prepare("
+                                INSERT INTO ingreso_documentos (ingreso_id, tipo_documento, ruta_archivo, nombre_original, created_at)
+                                VALUES (:iid, 'TRANSCRIPCION', :ruta, :nombre, NOW())
+                            ");
+                            $stmtDoc->execute([
+                                ':iid'    => $ingreso_id,
+                                ':ruta'   => $ruta,
+                                ':nombre' => $origName
+                            ]);
+                        } catch (Exception $e) {}
+                    }
+                }
             }
+        }
+
+        $json_pdfs = null;
+        if (!empty($rutas_pdfs)) {
+            $primer_pdf = $rutas_pdfs[0]['url'];
+            $json_pdfs = json_encode($rutas_pdfs, JSON_UNESCAPED_UNICODE);
         }
 
         $stmt = $this->db->prepare("
             UPDATE ingresos SET 
                 estado_tramite = 'TRANSCRITO', 
                 pdf_transcripcion_url = COALESCE(:pdf, pdf_transcripcion_url),
+                pdf_transcripciones_json = COALESCE(:json_pdfs, pdf_transcripciones_json),
                 contiene_mipres = COALESCE(:mipres, contiene_mipres),
                 locked_by_user_id = NULL,
                 locked_at = NULL
             WHERE id = :id
         ");
         $res = $stmt->execute([
-            ':pdf' => $ruta_pdf,
-            ':mipres' => $contiene_mipres,
-            ':id' => $ingreso_id
+            ':pdf'       => $primer_pdf,
+            ':json_pdfs' => $json_pdfs,
+            ':mipres'    => $contiene_mipres,
+            ':id'        => $ingreso_id
         ]);
 
         if ($user_id) {
@@ -336,7 +440,8 @@ class Ingreso {
         try { $this->db->exec("DELETE FROM `locks` WHERE `record_id` = " . intval($ingreso_id)); } catch (Exception $e) {}
 
         if ($res) {
-            registrar_log_auditoria('TRANSCRIPCION', 'GUARDAR_TRANSCRIPCION', $ingreso_id, "Orden transcrita y enviada a Monitoreo. Tiquete: " . ($ingreso['ticket_numero'] ?? 'N/A'));
+            $cant = count($rutas_pdfs);
+            registrar_log_auditoria('TRANSCRIPCION', 'GUARDAR_TRANSCRIPCION', $ingreso_id, "Orden transcrita con {$cant} archivo(s) PDF y enviada a Monitoreo. Tiquete: " . ($ingreso['ticket_numero'] ?? 'N/A'));
         }
         return $res;
     }
@@ -888,9 +993,9 @@ class Ingreso {
     }
 
     // ==========================================
-    // MÓDULO DE MONITOREO Y VERIFICACIÓN (MONITOR)
+    // MÓDULO DE MONITOREO Y VERIFICACIÓN (MONITOR - Centralizado Multisede)
     // ==========================================
-    public function getIngresosParaMonitoreo() {
+    public function getIngresosParaMonitoreo($filtro_sede = null) {
         $this->asegurarTablaLocks();
         $sql = "
             SELECT p.*, i.*, i.id AS id,
@@ -907,10 +1012,10 @@ class Ingreso {
             WHERE i.estado_tramite IN ('TRANSCRITO', 'TRANSCRITO_COMPLETO')";
 
         $params = [];
-        $active_sede = $_SESSION['active_sede_id'] ?? $_SESSION['sede_id'] ?? null;
-        if (!empty($active_sede)) {
-            $sql .= " AND (i.sede_id IS NULL OR i.sede_id = :sede_id)";
-            $params[':sede_id'] = $active_sede;
+        // Monitoreo es un proceso centralizado que procesa todas las sedes para máxima agilidad
+        if (!empty($filtro_sede) && $filtro_sede !== 'TODAS') {
+            $sql .= " AND i.sede_id = :sede_id";
+            $params[':sede_id'] = $filtro_sede;
         }
 
         $sql .= " ORDER BY 
@@ -1235,6 +1340,33 @@ class Ingreso {
             $params[':mod'] = $modulo_filtro;
         }
         $sql .= " ORDER BY i.updated_at DESC LIMIT " . intval($limit);
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
+        return $stmt->fetchAll();
+    }
+
+    /**
+     * Obtiene el listado de las órdenes alistadas hoy para reimpresión rápida de orden unificada.
+     */
+    public function getUltimosAlistadosHoy($sede_id = null, $limit = 50) {
+        $sql = "
+            SELECT i.*, p.tipo_documento, p.numero_documento, p.nombres, p.apellidos, p.eps_nombre,
+                   u.nombre_completo AS alistador_nombre,
+                   COALESCE(s.nombre_sede, 'Sede Principal') AS nombre_sede
+            FROM ingresos i
+            JOIN pacientes p ON i.paciente_id = p.id
+            LEFT JOIN usuarios u ON i.alistado_por_user_id = u.id
+            LEFT JOIN sedes s ON i.sede_id = s.id
+            WHERE i.estado_tramite IN ('ESPERA_ENTREGA', 'ALISTADO', 'GESTIONADO', 'EN_ENTREGA', 'ENTREGADO', 'TRANSCRITO_COMPLETO', 'TRANSCRITO_PENDIENTE', 'VERIFICADO')
+              AND (DATE(i.fecha_ingreso) >= DATE_SUB(CURDATE(), INTERVAL 2 DAY) OR DATE(i.updated_at) >= DATE_SUB(CURDATE(), INTERVAL 2 DAY))
+        ";
+        $params = [];
+        $active_sede = $sede_id ?: ($_SESSION['active_sede_id'] ?? $_SESSION['sede_id'] ?? null);
+        if (!empty($active_sede) && $active_sede !== 'TODAS') {
+            $sql .= " AND (i.sede_id IS NULL OR i.sede_id = :sede_id)";
+            $params[':sede_id'] = $active_sede;
+        }
+        $sql .= " ORDER BY i.updated_at DESC, i.id DESC LIMIT " . intval($limit);
         $stmt = $this->db->prepare($sql);
         $stmt->execute($params);
         return $stmt->fetchAll();

@@ -29,7 +29,8 @@ class Empresa {
                     pie_tiquete = :pie_tiquete,
                     video_turnero_url = :video_turnero_url,
                     marquesina_turnero = :marquesina_turnero,
-                    hora_apertura_atencion = :hora_apertura";
+                    hora_apertura_atencion = :hora_apertura,
+                    hora_apertura_festivos = :hora_apertura_festivos";
         
         $params = [
             ':razon_social' => $data['razon_social'],
@@ -40,7 +41,8 @@ class Empresa {
             ':pie_tiquete'  => $data['pie_tiquete'],
             ':video_turnero_url' => $data['video_turnero_url'],
             ':marquesina_turnero' => $data['marquesina_turnero'],
-            ':hora_apertura' => $data['hora_apertura_atencion'] ?? '07:20:00'
+            ':hora_apertura' => $data['hora_apertura_atencion'] ?? '07:00:00',
+            ':hora_apertura_festivos' => $data['hora_apertura_festivos'] ?? '08:00:00'
         ];
 
         if (!empty($data['logo_url'])) {
@@ -125,23 +127,24 @@ class Empresa {
         return $stmt->fetch();
     }
 
-    public function crearSede($empresa_id, $nombre_sede, $codigo_sede, $ciudad, $direccion, $telefono, $hora_apertura = '07:20:00') {
+    public function crearSede($empresa_id, $nombre_sede, $codigo_sede, $ciudad, $direccion, $telefono, $hora_apertura = '07:00:00', $hora_festivos = '08:00:00') {
         $stmt = $this->db->prepare("
-            INSERT INTO sedes (empresa_id, nombre_sede, codigo_sede, ciudad, direccion, telefono, hora_apertura_atencion, estado) 
-            VALUES (:empresa_id, :nombre_sede, :codigo_sede, :ciudad, :direccion, :telefono, :hora_apertura, 'Activo')
+            INSERT INTO sedes (empresa_id, nombre_sede, codigo_sede, ciudad, direccion, telefono, hora_apertura_atencion, hora_apertura_festivos, estado) 
+            VALUES (:empresa_id, :nombre_sede, :codigo_sede, :ciudad, :direccion, :telefono, :hora_apertura, :hora_festivos, 'Activo')
         ");
         return $stmt->execute([
-            ':empresa_id'     => $empresa_id,
-            ':nombre_sede'    => $nombre_sede,
-            ':codigo_sede'    => $codigo_sede,
-            ':ciudad'         => $ciudad,
-            ':direccion'      => $direccion,
-            ':telefono'       => $telefono,
-            ':hora_apertura'  => $hora_apertura ?: '07:20:00'
+            ':empresa_id'       => $empresa_id,
+            ':nombre_sede'      => $nombre_sede,
+            ':codigo_sede'      => $codigo_sede,
+            ':ciudad'           => $ciudad,
+            ':direccion'        => $direccion,
+            ':telefono'         => $telefono,
+            ':hora_apertura'    => $hora_apertura ?: '07:00:00',
+            ':hora_festivos'    => $hora_festivos ?: '08:00:00'
         ]);
     }
 
-    public function actualizarSede($id, $empresa_id, $nombre_sede, $codigo_sede, $ciudad, $direccion, $telefono, $estado = 'Activo', $hora_apertura = '07:20:00') {
+    public function actualizarSede($id, $empresa_id, $nombre_sede, $codigo_sede, $ciudad, $direccion, $telefono, $estado = 'Activo', $hora_apertura = '07:00:00', $hora_festivos = '08:00:00') {
         $stmt = $this->db->prepare("
             UPDATE sedes SET 
                 empresa_id = :empresa_id, 
@@ -151,19 +154,21 @@ class Empresa {
                 direccion = :direccion, 
                 telefono = :telefono, 
                 hora_apertura_atencion = :hora_apertura,
+                hora_apertura_festivos = :hora_festivos,
                 estado = :estado 
             WHERE id = :id
         ");
         return $stmt->execute([
-            ':empresa_id'     => $empresa_id,
-            ':nombre_sede'    => $nombre_sede,
-            ':codigo_sede'    => $codigo_sede,
-            ':ciudad'         => $ciudad,
-            ':direccion'      => $direccion,
-            ':telefono'       => $telefono,
-            ':hora_apertura'  => $hora_apertura ?: '07:20:00',
-            ':estado'         => $estado,
-            ':id'             => $id
+            ':empresa_id'       => $empresa_id,
+            ':nombre_sede'      => $nombre_sede,
+            ':codigo_sede'      => $codigo_sede,
+            ':ciudad'           => $ciudad,
+            ':direccion'        => $direccion,
+            ':telefono'         => $telefono,
+            ':hora_apertura'    => $hora_apertura ?: '07:00:00',
+            ':hora_festivos'    => $hora_festivos ?: '08:00:00',
+            ':estado'           => $estado,
+            ':id'               => $id
         ]);
     }
 }
