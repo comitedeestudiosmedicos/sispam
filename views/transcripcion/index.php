@@ -21,31 +21,74 @@ if (isset($_GET['exportar_excel_paciente']) && isset($_GET['ingreso_id'])) {
         $pacienteModel = new Paciente();
         $paciente = $pacienteModel->getByDocumento($detalle['tipo_documento'], $detalle['numero_documento']);
         
+        // Fusionar: los datos del paciente tienen prioridad sobre los del ingreso
         $data = array_merge($detalle, $paciente ?: []);
         
+        // 1. TIPO DE DOCUMENTO: Usamos la constante global de config/app.php
+        $tipoDocRaw = strtoupper(trim($data['tipo_documento'] ?? ''));
+        $tipoDoc = (defined('TIPOS_DOCUMENTO') && isset(TIPOS_DOCUMENTO[$tipoDocRaw])) 
+            ? TIPOS_DOCUMENTO[$tipoDocRaw] 
+            : 'CC - Cédula de Ciudadanía'; // Fallback seguro si hay un dato extraño en BD
+
+        // 2. NÚMERO DE DOCUMENTO: Solo letras y números
+        $numDoc = preg_replace('/[^\dA-Z]/', '', trim($data['numero_documento'] ?? ''));
+        if (empty($numDoc)) $numDoc = '0000000000';
+        
+        // 3. NOMBRES Y APELLIDOS: Mínimo 3 caracteres (obligatorio en Qrystalos)
+        $pApellido = strtoupper(trim($data['primer_apellido'] ?? ''));
+        if (strlen($pApellido) < 3) $pApellido = 'APE';
+        
+        $sApellido = strtoupper(trim($data['segundo_apellido'] ?? ''));
+        $pNombre = strtoupper(trim($data['primer_nombre'] ?? ''));
+        if (strlen($pNombre) < 3) $pNombre = 'NOM';
+        $sNombre = strtoupper(trim($data['segundo_nombre'] ?? ''));
+        
+        // 4. FECHA DE NACIMIENTO: Fallback a 1990-01-01 si está vacía
+        $fNacimiento = trim($data['fecha_nacimiento'] ?? '');
+        if (empty($fNacimiento)) $fNacimiento = '1990-01-01';
+        
+        // 5. SEXO: Fallback a Masculino si no es válido
+        $sexo = trim($data['sexo'] ?? '');
+        if (!in_array($sexo, ['Masculino', 'Femenino'])) $sexo = 'Masculino';
+        
+        // 6. CELULAR: Solo dígitos, fallback a 3000000000
+        $celular = preg_replace('/[^\d]/', '', trim($data['numero_celular'] ?? ''));
+        if (empty($celular)) $celular = '3000000000';
+        
+        // 7. EMAIL: Fallback a email temporal válido
+        $email = trim($data['email'] ?? '');
+        if (empty($email) || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $email = 'paciente_' . $numDoc . '@temp.sispam.local';
+        }
+        
+        // 8. DIRECCIÓN: Fallback si está vacía
+        $direccion = strtoupper(trim($data['direccion_residencia'] ?? ''));
+        if (empty($direccion)) $direccion = 'DIRECCION NO ESPECIFICADA';
+        
+        // Las 35 columnas exactas con TODOS los campos obligatorios llenos
         $rowData = [
-            'TIPO_DOC'            => strtoupper(trim($data['tipo_documento'] ?? 'CC')),
-            'DOCIDAFILIADO'       => preg_replace('/[^\dA-Z]/', '', trim($data['numero_documento'] ?? '')),
-            'PAPELLIDO'           => strtoupper(trim($data['primer_apellido'] ?? 'APELLIDO')),
-            'SAPELLIDO'           => strtoupper(trim($data['segundo_apellido'] ?? '')),
-            'PNOMBRE'             => strtoupper(trim($data['primer_nombre'] ?? 'NOMBRE')),
-            'SNOMBRE'             => strtoupper(trim($data['segundo_nombre'] ?? '')),
-            'FNACIMIENTO'         => $data['fecha_nacimiento'] ?? '',
+            'TIPO_DOC'            => $tipoDoc,
+            'DOCIDAFILIADO'       => $numDoc,
+            'PAPELLIDO'           => $pApellido,
+            'SAPELLIDO'           => $sApellido,
+            'PNOMBRE'             => $pNombre,
+            'SNOMBRE'             => $sNombre,
+            'FNACIMIENTO'         => $fNacimiento,
             'CIUDADNAC'           => '05001',
-            'SEXO'                => trim($data['sexo'] ?? 'Masculino'),
+            'SEXO'                => $sexo,
             'ESTADO_CIVIL'        => 'S/N',
             'GRUPO_SANG'          => 'S/N',
             'GRUPOETNICO'         => 'S - S/N',
             'TIPODISCAPACIDAD'    => 'N - No Aplica',
             'IDESCOLARIDAD'       => '13 - NINGUNO',
-            'IDPAIS'              => '',
-            'DIRECCION'           => strtoupper(trim($data['direccion_residencia'] ?? 'DIRECCION NO ESPECIFICADA')),
+            'IDPAIS'              => '170',
+            'DIRECCION'           => $direccion,
             'CIUDAD'              => '05001',
             'ZONA'                => 'U - Urbana',
             'IDBARRIO'            => '',
-            'CELULAR'             => preg_replace('/[^\d]/', '', trim($data['numero_celular'] ?? '3000000000')),
+            'CELULAR'             => $celular,
             'TELEFONORES'         => '',
-            'EMAIL'               => !empty($data['email']) ? trim($data['email']) : ('paciente_' . ($data['numero_documento'] ?? '000') . '@temp.sispam.local'),
+            'EMAIL'               => $email,
             'IDOCUPACION'         => '0000 - No Aplica',
             'IDADMINISTRADORA'    => 'EPS040',
             'IDPLAN'              => '',
@@ -53,8 +96,8 @@ if (isset($_GET['exportar_excel_paciente']) && isset($_GET['ingreso_id'])) {
             'NIVELSOCIOEC'        => '1 - CATEGORIA A',
             'ESTRATO'             => intval($data['estrato_socioeconomico'] ?? 3),
             'IDSEDE'              => '20 - SEDE EXTERNA',
-            'FECHAAFILIACION'     => $data['fecha_afiliacion'] ?? '',
-            'CIUDADDOC'           => '',
+            'FECHAAFILIACION'     => trim($data['fecha_afiliacion'] ?? ''),
+            'CIUDADDOC'           => '05001',
             'EDAD_ESTIMADA'       => '',
             'GRUPOPOB'            => '5 - Otro Grupo Poblacional',
             'CATEGORIA'           => 'NOR - Normal',
@@ -62,14 +105,14 @@ if (isset($_GET['exportar_excel_paciente']) && isset($_GET['ingreso_id'])) {
         ];
         
         $headers = array_keys($rowData);
-        $filename = 'paciente_' . ($data['numero_documento'] ?? 'sin_doc') . '_qrystalos.xls';
+        $filename = 'paciente_' . $numDoc . '_qrystalos.xls';
         
         header("Content-Type: application/vnd.ms-excel; charset=utf-8");
         header("Content-Disposition: attachment; filename=\"$filename\"");
         header("Pragma: no-cache");
         header("Expires: 0");
         
-        echo "\xEF\xBB\xBF";
+        echo "\xEF\xBB\xBF"; // BOM UTF-8
         
         echo '<html xmlns:x="urn:schemas-microsoft-com:office:excel">';
         echo '<head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">';
