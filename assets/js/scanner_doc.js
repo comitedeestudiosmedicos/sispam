@@ -514,6 +514,27 @@ class DocumentScannerPro {
         });
     }
 
+    getRawDataUrl(quality = 0.95) {
+        if (!this.rawImage) return null;
+        try {
+            if (this.rawImage instanceof HTMLCanvasElement || (typeof HTMLCanvasElement !== 'undefined' && this.rawImage.toDataURL)) {
+                return this.rawImage.toDataURL('image/jpeg', quality);
+            }
+            if (this.rawImage.src && typeof this.rawImage.src === 'string' && this.rawImage.src.startsWith('data:')) {
+                return this.rawImage.src;
+            }
+            const c = document.createElement('canvas');
+            c.width = this.rawWidth || 1280;
+            c.height = this.rawHeight || 720;
+            const ctx = c.getContext('2d');
+            ctx.drawImage(this.rawImage, 0, 0, c.width, c.height);
+            return c.toDataURL('image/jpeg', quality);
+        } catch (e) {
+            console.warn('[Scanner] Error en getRawDataUrl:', e);
+            return (this.rawImage && this.rawImage.src) ? this.rawImage.src : null;
+        }
+    }
+
     loadCapturedImage(imgElement) {
         this.rawImage = imgElement;
         this.previewImage = null;   // se reconstruye con construirPreviewRealzado()
@@ -1587,12 +1608,14 @@ class LiveEdgeDetector {
         this.onProgress = onProgress || function () {};
         this._ultimoProgreso = -1;
 
-        // --- Auto-captura por estabilidad (Fase 3) ---
+        // --- Auto-captura por estabilidad (Fase 3 calibrada) ---
         this.autoCaptureEnabled = true;
         this.stabilityBuffer = [];
-        this.STABILITY_SAMPLES = 4;
-        this.STABILITY_THRESHOLD_PX = 35;
-        this.COUNTDOWN_MS = 1000;        // 1.0 segundo fluido y directo al disparo
+        this.STABILITY_SAMPLES = 6;
+        this.STABILITY_THRESHOLD_PX = 14;  // Umbral de quietud en frame de análisis
+        this.COUNTDOWN_MS = 2200;         // 2.2 segundos para posicionamiento cómodo y seguro
+        this.GRACE_PERIOD_MS = 1400;      // 1.4 segundos de gracia inicial para ubicar papel
+        this.sessionStartTime = performance.now();
         this.countdownStart = null;
         this.autoCaptureFired = false;
         this.lastFrameH = 0;
@@ -1635,6 +1658,14 @@ class LiveEdgeDetector {
         this.displayCorners = null;
         this.stabilityBuffer = [];
         this.countdownStart = null;
+        this.sessionStartTime = performance.now();
+        
+        // Calibración adaptativa según tamaño del documento
+        if (docType === 'CEDULA') {
+            this.COUNTDOWN_MS = 2000; // 2.0 segundos para documento pequeño
+        } else {
+            this.COUNTDOWN_MS = 2300; // 2.3 segundos para fórmulas y órdenes médicas
+        }
     }
 
     setDebugMode(on, debugCanvas) {
@@ -1670,6 +1701,7 @@ class LiveEdgeDetector {
     resetAutoCapture() {
         this.stabilityBuffer = [];
         this.countdownStart = null;
+        this.sessionStartTime = performance.now();
         this.autoCaptureFired = false;
         this.smoothedCorners = null;
         this.displayCorners = null;
@@ -1855,13 +1887,43 @@ class LiveEdgeDetector {
     _updateStability(corners, canPush) {
         if (!this.autoCaptureEnabled || this.autoCaptureFired) return;
 
-        // Iniciar inmediatamente la cuenta atrás para asegurar disparo continuo
+        const now = performance.now();
+
+        // 1. Período de gracia inicial al abrir la cámara o cambiar de cara
+        if (now - this.sessionStartTime < this.GRACE_PERIOD_MS) {
+            this.countdownStart = null;
+            this.stabilityBuffer = [];
+            return;
+        }
+
+        // 2. Si no hay esquinas válidas o se perdió la detección, reiniciar temporizador
+        if (!corners) {
+            this.countdownStart = null;
+            this.stabilityBuffer = [];
+            return;
+        }
+
+        // 3. Registrar muestra en buffer de estabilidad
+        if (canPush) {
+            this.stabilityBuffer.push(corners);
+            if (this.stabilityBuffer.length > this.STABILITY_SAMPLES) {
+                this.stabilityBuffer.shift();
+            }
+        }
+
+        // 4. Si hay movimiento apreciable mientras se acomoda el papel, reiniciar cuenta regresiva
+        if (this._hasDrasticMovement(24) || !this._isStable()) {
+            this.countdownStart = null;
+            return;
+        }
+
+        // 5. Iniciar la cuenta regresiva únicamente cuando el documento está firme y estable
         if (this.countdownStart === null) {
-            this.countdownStart = performance.now();
+            this.countdownStart = now;
         }
     }
 
-    _hasDrasticMovement(thresholdPx = 60) {
+    _hasDrasticMovement(thresholdPx = 24) {
         if (this.stabilityBuffer.length < 2) return false;
         const refW = this.targetW;
         const refH = this.lastFrameH || this.targetW;
@@ -1879,7 +1941,7 @@ class LiveEdgeDetector {
     // Estable = ninguna de las 4 esquinas se aleja de su posición media más que el umbral,
     // medido en píxeles del frame de análisis.
     _isStable() {
-        if (this.stabilityBuffer.length < 2) return true;
+        if (this.stabilityBuffer.length < 3) return false; // Exigir al menos 3 muestras consecutivas
         const refW = this.targetW;
         const refH = this.lastFrameH || this.targetW;
         const buf = this.stabilityBuffer;

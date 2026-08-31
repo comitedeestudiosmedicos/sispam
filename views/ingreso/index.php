@@ -990,21 +990,25 @@ function ensureScannerLibsLoaded() {
     </div>
 </div>
 
-<!-- Vista previa de una página del lote a tamaño completo: las miniaturas son de 75x95px
-     y no permiten verificar que el documento quedó legible antes de finalizar. -->
-<div class="modal fade" id="modalPreviewPagina" tabindex="-1" aria-hidden="true" style="z-index: 1090;">
-    <div class="modal-dialog modal-lg modal-dialog-centered" style="z-index: 1095;">
-        <div class="modal-content bg-dark border-secondary">
+<!-- Vista previa de documento o página escaneada a pantalla completa (Imagen / PDF) -->
+<div class="modal fade" id="modalPreviewPagina" tabindex="-1" aria-hidden="true" style="z-index: 1098;">
+    <div class="modal-dialog modal-xl modal-dialog-centered" style="z-index: 1099;">
+        <div class="modal-content bg-dark border-secondary text-white shadow-lg">
             <div class="modal-header py-2 border-secondary">
-                <h5 class="modal-title fw-bold text-white" id="previewPaginaTitulo">Página</h5>
+                <h5 class="modal-title fw-bold text-white d-flex align-items-center gap-2" id="previewPaginaTitulo">
+                    <i class="fa-solid fa-file-lines text-info"></i> Vista Previa del Documento
+                </h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
-            <div class="modal-body text-center p-2">
-                <img id="previewPaginaImg" class="img-fluid rounded" style="max-height:75vh;" alt="Vista previa de la página escaneada">
+            <div class="modal-body text-center p-2" style="background:#0f172a; min-height: 400px; display: flex; align-items: center; justify-content: center;">
+                <img id="previewPaginaImg" class="img-fluid rounded shadow" style="max-height:80vh; object-fit: contain;" alt="Vista previa de documento">
+                <iframe id="previewPaginaIframe" class="w-100 d-none rounded" style="height:80vh; border:0; background:#fff;"></iframe>
             </div>
             <div class="modal-footer py-2 border-secondary justify-content-between">
-                <small class="text-muted" id="previewPaginaInfo"></small>
-                <button type="button" class="btn btn-outline-light btn-sm" data-bs-dismiss="modal">Cerrar</button>
+                <small class="text-info fw-semibold" id="previewPaginaInfo"></small>
+                <button type="button" class="btn btn-outline-light btn-sm px-4 fw-bold" data-bs-dismiss="modal">
+                    <i class="fa-solid fa-check me-1"></i> Cerrar Vista
+                </button>
             </div>
         </div>
     </div>
@@ -1136,12 +1140,15 @@ function ensureScannerLibsLoaded() {
                          de formato se eliminaron porque el tipo de documento ya determina el
                          formato esperado, y el selector de modo de color porque el modo lo
                          decide el tipo (ver CONFIG_DOCUMENTOS). -->
-                    <div id="controles-revision" class="d-none text-center">
+                    <div id="controles-revision" class="d-none d-flex justify-content-center align-items-center gap-2 my-2 flex-wrap">
                         <button type="button" class="scanner-icon-btn" onclick="scannerPro.rotateImage('left')" title="Girar 90° a la izquierda">
                             <i class="fa-solid fa-rotate-left"></i>
                         </button>
                         <button type="button" class="scanner-icon-btn" onclick="scannerPro.rotateImage('right')" title="Girar 90° a la derecha">
                             <i class="fa-solid fa-rotate-right"></i>
+                        </button>
+                        <button type="button" class="btn btn-sm btn-info text-white fw-bold px-3 shadow-sm rounded-pill" onclick="verPreviewPaginaActual()" title="Ver la captura en pantalla completa para verificar nitidez">
+                            <i class="fa-solid fa-magnifying-glass-plus me-1"></i> Ver Legible / Zoom
                         </button>
                     </div>
                 </div>
@@ -1872,7 +1879,7 @@ const CONFIG_DOCUMENTOS = {
     // motivo de glosa al radicar ante la EPS.
     CEDULA: {
         titulo: 'Cédula / Documento de Identidad',
-        paginasEsperadas: null,
+        paginasEsperadas: 2,
         realce: 'ninguno',
         composicion: 'ambas-caras-una-pagina',
         rotulos: ['Frente', 'Reverso']
@@ -2300,6 +2307,7 @@ async function trasCapturar() {
     // Apagar cámara y pasar SIEMPRE a la pantalla de revisión con los 3 botones
     try { scannerPro.stopCamera(); } catch (e) {}
     mostrarPantallaRevision();
+    actualizarTiraMiniaturas();
 }
 
 function cargarFotoNativaEscaner(event) {
@@ -2380,11 +2388,12 @@ function actualizarTiraMiniaturas() {
     const strip = document.getElementById('strip-miniaturas');
     const bloque = document.getElementById('bloque-miniaturas');
     const pages = scannerPro.scannedPages;
+    const hayRaw = !!scannerPro.rawImage;
 
-    // La tira solo ocupa alto cuando hay algo que mostrar: en pantalla de teléfono cada
-    // bloque permanente es scroll que el orientador tiene que hacer en cada paciente.
-    if (bloque) bloque.classList.toggle('d-none', pages.length === 0);
-    if (pages.length === 0) {
+    const totalItems = pages.length + (hayRaw ? 1 : 0);
+
+    if (bloque) bloque.classList.toggle('d-none', totalItems === 0);
+    if (totalItems === 0) {
         if (strip) strip.innerHTML = '';
         return;
     }
@@ -2392,25 +2401,50 @@ function actualizarTiraMiniaturas() {
     const cfg = configDoc(_categoriaEscaner);
 
     let html = '';
+    // 1. Páginas ya guardadas en el lote (ej: Frente de Cédula o Pág 1 de Orden)
     pages.forEach((p, idx) => {
         const flechaIzq = idx > 0
-            ? `<button type="button" class="page-thumb-move izq" title="Mover antes" onclick="moverPaginaEscaner(${idx}, -1)"><i class="fa-solid fa-chevron-left"></i></button>`
+            ? `<button type="button" class="page-thumb-move izq" title="Mover antes" onclick="event.stopPropagation(); moverPaginaEscaner(${idx}, -1)"><i class="fa-solid fa-chevron-left"></i></button>`
             : '';
         const flechaDer = idx < pages.length - 1
-            ? `<button type="button" class="page-thumb-move der" title="Mover después" onclick="moverPaginaEscaner(${idx}, 1)"><i class="fa-solid fa-chevron-right"></i></button>`
+            ? `<button type="button" class="page-thumb-move der" title="Mover después" onclick="event.stopPropagation(); moverPaginaEscaner(${idx}, 1)"><i class="fa-solid fa-chevron-right"></i></button>`
             : '';
 
         const rotulo = (cfg.rotulos && cfg.rotulos[idx]) ? cfg.rotulos[idx] : `Pág ${idx + 1}`;
 
         html += `
-            <div class="page-thumb-item ${idx === scannerPro.currentPageIndex ? 'active' : ''}">
-                <img src="${p.dataUrl}" title="Clic para ver la página completa" onclick="verPaginaEscaner(${idx})">
+            <div class="page-thumb-item" title="Clic para ampliar y verificar ${rotulo}" onclick="verPaginaEscaner(${idx})">
+                <img src="${p.dataUrl}" alt="${rotulo}">
                 <span class="page-thumb-badge" style="background:#0284c7;font-weight:bold;">${rotulo}</span>
-                <button type="button" class="page-thumb-delete" title="Eliminar página" onclick="borrarPaginaEscaner(${idx})"><i class="fa-solid fa-xmark"></i></button>
+                <button type="button" class="page-thumb-delete" title="Eliminar página" onclick="event.stopPropagation(); borrarPaginaEscaner(${idx});"><i class="fa-solid fa-xmark"></i></button>
                 ${flechaIzq}${flechaDer}
             </div>
         `;
     });
+
+    // 2. Si hay una captura activa en la pantalla de revisión (ej: Reverso o primera toma recién hecha)
+    if (hayRaw) {
+        const curIdx = pages.length;
+        const rotuloCur = (cfg.rotulos && cfg.rotulos[curIdx]) ? `${cfg.rotulos[curIdx]} (Actual)` : `Pág ${curIdx + 1} (Actual)`;
+        let curDataUrl = '';
+        if (typeof scannerPro.getRawDataUrl === 'function') {
+            curDataUrl = scannerPro.getRawDataUrl(0.7);
+        } else if (scannerPro.rawImage.toDataURL) {
+            curDataUrl = scannerPro.rawImage.toDataURL('image/jpeg', 0.7);
+        } else if (scannerPro.rawImage.src) {
+            curDataUrl = scannerPro.rawImage.src;
+        }
+
+        if (curDataUrl) {
+            html += `
+                <div class="page-thumb-item active" style="border: 2px solid #22c55e;" title="Clic para ampliar captura actual" onclick="verPreviewPaginaActual()">
+                    <img src="${curDataUrl}" alt="${rotuloCur}">
+                    <span class="page-thumb-badge bg-success" style="font-weight:bold;"><i class="fa-solid fa-eye me-1"></i>${rotuloCur}</span>
+                </div>
+            `;
+        }
+    }
+
     if (strip) strip.innerHTML = html;
 }
 
@@ -2523,11 +2557,122 @@ function marcarFilaAdjunta(fila, nPaginas, pesoMb) {
     const estado = fila.querySelector('.status-doc-adjunto');
     if (estado) {
         estado.innerHTML = `
-            <div class="alert alert-success p-1 px-2 mb-0 small fw-bold d-flex align-items-center gap-1">
-                <i class="fa-solid fa-circle-check"></i>
-                <span>Cargado · ${nPaginas} pág. · ${pesoMb} MB</span>
+            <div class="d-flex align-items-center gap-2 mt-1 flex-wrap">
+                <div class="alert alert-success p-1 px-2 mb-0 small fw-bold d-flex align-items-center gap-1 shadow-sm">
+                    <i class="fa-solid fa-circle-check text-success"></i>
+                    <span>Cargado · ${nPaginas} pág. · ${pesoMb} MB</span>
+                </div>
+                <button type="button" class="btn btn-sm btn-primary fw-bold shadow-sm" onclick="previsualizarDocFila(this)" title="Ver documento antes de generar tiquete">
+                    <i class="fa-solid fa-eye me-1"></i> Ver Documento
+                </button>
             </div>`;
     }
+}
+
+/** Previsualiza el archivo PDF o imagen adjunto en una fila del formulario antes de enviar */
+function previsualizarDocFila(btn) {
+    const fila = btn.closest('.item-documento') || btn.closest('tr') || btn.parentElement;
+    if (!fila) return;
+    const input = fila.querySelector('.input-doc-file');
+    if (!input || !input.files || input.files.length === 0) {
+        alert('No hay ningún archivo cargado en esta fila.');
+        return;
+    }
+
+    const file = input.files[0];
+    const select = fila.querySelector('.select-doc-cat');
+    const catNombre = select ? select.options[select.selectedIndex].text : 'Documento';
+
+    const img = document.getElementById('previewPaginaImg');
+    const iframe = document.getElementById('previewPaginaIframe');
+    const titulo = document.getElementById('previewPaginaTitulo');
+    const info = document.getElementById('previewPaginaInfo');
+
+    if (titulo) titulo.innerHTML = `<i class="fa-solid fa-file-pdf text-danger me-2"></i> ${catNombre} — <span class="text-white-50 small">${file.name}</span>`;
+    if (info) info.textContent = `Tamaño: ${(file.size / (1024 * 1024)).toFixed(2)} MB · Tipo: ${file.type || 'Documento'}`;
+
+    const url = URL.createObjectURL(file);
+
+    if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
+        if (img) img.classList.add('d-none');
+        if (iframe) {
+            iframe.classList.remove('d-none');
+            iframe.src = url;
+        }
+    } else {
+        if (iframe) iframe.classList.add('d-none');
+        if (img) {
+            img.classList.remove('d-none');
+            img.src = url;
+        }
+    }
+
+    const modalEl = document.getElementById('modalPreviewPagina');
+    const modalInstance = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
+    modalInstance.show();
+
+    modalEl.addEventListener('hidden.bs.modal', function onHide() {
+        if (iframe) iframe.src = 'about:blank';
+        if (img) img.src = '';
+        URL.revokeObjectURL(url);
+        modalEl.removeEventListener('hidden.bs.modal', onHide);
+    }, { once: true });
+}
+
+/** Previsualiza la foto actual capturada dentro del escáner en pantalla completa */
+function verPreviewPaginaActual() {
+    if (!scannerPro) return;
+
+    let dataUrl = null;
+    let dimensiones = '';
+    let tituloTexto = `Vista Previa (${_categoriaEscaner})`;
+
+    if (scannerPro.rawImage) {
+        if (typeof scannerPro.getRawDataUrl === 'function') {
+            dataUrl = scannerPro.getRawDataUrl(0.95);
+        } else if (scannerPro.rawImage.toDataURL) {
+            dataUrl = scannerPro.rawImage.toDataURL('image/jpeg', 0.95);
+        } else if (scannerPro.rawImage.src) {
+            dataUrl = scannerPro.rawImage.src;
+        }
+        dimensiones = `${scannerPro.rawWidth || 1920} × ${scannerPro.rawHeight || 1080} px`;
+
+        if (_categoriaEscaner === 'CEDULA') {
+            const numPag = scannerPro.scannedPages.length + 1;
+            tituloTexto = numPag === 1 ? 'Cédula — Frente (Paso 1)' : 'Cédula — Reverso (Paso 2)';
+        } else {
+            tituloTexto = `${configDoc(_categoriaEscaner).titulo} — Página ${scannerPro.scannedPages.length + 1}`;
+        }
+    } else if (scannerPro.scannedPages.length > 0) {
+        const lastIdx = scannerPro.scannedPages.length - 1;
+        const lastP = scannerPro.scannedPages[lastIdx];
+        dataUrl = lastP.dataUrl;
+        dimensiones = `${lastP.width} × ${lastP.height} px`;
+        const cfg = configDoc(_categoriaEscaner);
+        const rotulo = (cfg.rotulos && cfg.rotulos[lastIdx]) ? cfg.rotulos[lastIdx] : `Página ${lastIdx + 1}`;
+        tituloTexto = `${cfg.titulo} — ${rotulo}`;
+    }
+
+    if (!dataUrl) {
+        mostrarNotificacionModal('Atención', 'Por favor tome una foto o active la cámara primero para previsualizar.', 'warning');
+        return;
+    }
+
+    const img = document.getElementById('previewPaginaImg');
+    const iframe = document.getElementById('previewPaginaIframe');
+    const titulo = document.getElementById('previewPaginaTitulo');
+    const info = document.getElementById('previewPaginaInfo');
+
+    if (iframe) iframe.classList.add('d-none');
+    if (img) {
+        img.classList.remove('d-none');
+        img.src = dataUrl;
+    }
+    if (titulo) titulo.innerHTML = `<i class="fa-solid fa-camera text-info me-2"></i> ${tituloTexto}`;
+    if (info) info.textContent = `${dimensiones} · Compruebe la nitidez y legibilidad`;
+
+    const el = document.getElementById('modalPreviewPagina');
+    (bootstrap.Modal.getInstance(el) || new bootstrap.Modal(el)).show();
 }
 
 function verPaginaEscaner(index) {
@@ -2536,13 +2681,19 @@ function verPaginaEscaner(index) {
     if (!page) return;
 
     const img = document.getElementById('previewPaginaImg');
+    const iframe = document.getElementById('previewPaginaIframe');
     const titulo = document.getElementById('previewPaginaTitulo');
     const info = document.getElementById('previewPaginaInfo');
     if (!img) return;
 
+    const cfg = configDoc(_categoriaEscaner);
+    const rotulo = (cfg.rotulos && cfg.rotulos[index]) ? cfg.rotulos[index] : `Página ${index + 1}`;
+
+    if (iframe) iframe.classList.add('d-none');
+    img.classList.remove('d-none');
     img.src = page.dataUrl;
-    if (titulo) titulo.textContent = `Página ${index + 1} de ${scannerPro.scannedPages.length}`;
-    if (info) info.textContent = `${page.width} × ${page.height} px`;
+    if (titulo) titulo.innerHTML = `<i class="fa-solid fa-image text-info me-2"></i> ${cfg.titulo} — ${rotulo}`;
+    if (info) info.textContent = `${page.width} × ${page.height} px · Página guardada`;
 
     try {
         const el = document.getElementById('modalPreviewPagina');
@@ -2551,6 +2702,18 @@ function verPaginaEscaner(index) {
         console.warn('[Scanner] No se pudo abrir la vista previa:', e);
     }
 }
+
+// Actualizar estado y botón de vista previa cuando se adjunta un archivo manual desde PC o galería
+document.addEventListener('change', function(e) {
+    if (e.target && e.target.classList.contains('input-doc-file')) {
+        const fila = e.target.closest('.item-documento');
+        if (fila && e.target.files && e.target.files.length > 0) {
+            const f = e.target.files[0];
+            const mb = (f.size / (1024 * 1024)).toFixed(2);
+            marcarFilaAdjunta(fila, 1, mb);
+        }
+    }
+});
 
 /**
  * Confirmación sí/no basada en modal Bootstrap, coherente con el resto del flujo de
