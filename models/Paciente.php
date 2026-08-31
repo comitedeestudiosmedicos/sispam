@@ -927,31 +927,4 @@ class Paciente {
         $stmt->execute([':pid' => $pacienteId]);
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
-    /**
-     * /////////////////////// IMPORTANTE PARA LA API QRYSTALOS ////////////////////////
-     * Actualiza únicamente el ID de Qrystalos después de una sincronización exitosa
-     */
-    public function actualizarQrystalosId($tipo_doc, $num_doc, $consecutivo) {
-        // Verificar si la columna existe en la tabla de la BD, si no, crearla
-        $stmtCols = $this->db->query("SHOW COLUMNS FROM pacientes LIKE 'qrystalos_consecutivo'");
-        if ($stmtCols->rowCount() == 0) {
-            try {
-                $this->db->exec("ALTER TABLE `pacientes` ADD COLUMN `qrystalos_consecutivo` VARCHAR(255) NULL");
-            } catch (Exception $e) {
-                // Silenciar error si otra instancia la creó al mismo tiempo
-            }
-        }
-
-        // Ejecutar el update local buscando al paciente mediante el buscador optimizado
-        $paciente = $this->getByDocumento($tipo_doc, $num_doc);
-        if ($paciente) {
-            $stmt = $this->db->prepare("UPDATE pacientes SET qrystalos_consecutivo = :consecutivo WHERE id = :id");
-            return $stmt->execute([
-                ':consecutivo' => $consecutivo,
-                ':id'          => $paciente['id']
-            ]);
-        }
-        return false;
-    }
 }
-?>
