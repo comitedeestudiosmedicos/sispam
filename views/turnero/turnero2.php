@@ -260,125 +260,59 @@ $nombre_sede_mostrar = $sedeInfo ? $sedeInfo['nombre_sede'] : ($_SESSION['active
     </div>
 </header>
 
-<!-- Contenido Principal -->
+<!-- Contenido Principal: Grilla de Pacientes Llamados -->
 <main class="container-fluid p-3 p-lg-4">
-    <div class="row g-4">
+    <div class="w-100" style="max-width: 1700px; margin: 0 auto;">
         
-        <!-- Columna Izquierda: Último Llamado & Video Institucional -->
-        <div class="col-lg-5 col-xl-5 d-flex flex-column gap-3">
-            
-            <!-- Tarjeta 1: Último Llamado Activo -->
-            <div class="savia-card savia-card-active p-4 text-center pulse-active">
-                <div class="d-flex align-items-center justify-content-between mb-3">
-                    <span class="badge-savia text-uppercase small shadow-sm">
-                        <i class="fa-solid fa-bell me-1"></i> Turno en Llamado
-                    </span>
-                    <span class="badge bg-dark bg-opacity-75 text-accent border border-accent border-opacity-50 small">
-                        <i class="fa-solid fa-volume-high me-1"></i> Audio Activo
-                    </span>
-                </div>
-
-                <div class="text-accent small fw-bold text-uppercase mb-1 tracking-wide">
-                    <i class="fa-solid fa-user me-1"></i> Paciente Convocado
-                </div>
-                <div class="paciente-box-destacado mb-3">
-                    <div id="ultimo-paciente" class="fw-bold tracking-wide" style="font-size: 1.85rem; min-height: 2.4rem; line-height: 1.25; color: #fde047; text-shadow: 0 2px 8px rgba(0,0,0,0.85);">--</div>
-                </div>
-
-                <div class="d-flex align-items-center justify-content-center gap-2 mb-3">
-                    <span class="text-white-50 small fw-bold">TIQUETE:</span>
-                    <span id="ultimo-ticket" class="badge bg-dark border border-accent text-accent font-mono fs-4 px-3 py-1 fw-bold shadow-sm">--</span>
-                </div>
-
-                <!-- Destacado del Módulo / Ventanilla Asignada -->
-                <div class="p-3 rounded-4 border d-flex flex-column align-items-center justify-content-center gap-1 mb-3" style="background: linear-gradient(135deg, rgba(245, 158, 11, 0.25) 0%, rgba(4, 172, 140, 0.3) 100%); border-color: #f59e0b !important;">
-                    <span class="text-warning small fw-bold text-uppercase tracking-wider">
-                        <i class="fa-solid fa-person-walking-arrow-right me-1"></i> DIRÍJASE A LA VENTANILLA:
-                    </span>
-                    <div id="ultimo-modulo" class="fw-bold text-white fs-2 text-uppercase tracking-wide" style="text-shadow: 0 2px 10px rgba(0,0,0,0.8);">--</div>
-                </div>
-
-                <!-- Controles de Audio y Re-llamado -->
-                <div class="d-flex justify-content-center gap-2 flex-wrap" id="audio-controls-container">
-                    <button class="btn btn-sm btn-warning text-dark fw-bold px-3 py-2 shadow-sm rounded-3" id="btn-audio" onclick="habilitarAudio()">
-                        <i class="fa-solid fa-volume-high me-1"></i> Activar Voz de Llamados
-                    </button>
-                    <button class="btn btn-sm btn-outline-light fw-bold px-3 py-2 shadow-sm rounded-3" id="btn-rellamar" onclick="reLlamarActual()" style="display: none;">
-                        <i class="fa-solid fa-rotate me-1"></i> Re-llamar
-                    </button>
-                </div>
-                <div class="small text-white-50 mt-2" id="audio-status-msg" style="font-size: 0.78rem;">
-                    Haga clic para habilitar el sintetizador de voz en esta pantalla.
-                </div>
+        <!-- Barra Superior de Control y Estado -->
+        <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2 px-1">
+            <div class="d-flex align-items-center gap-2">
+                <span class="badge-savia text-uppercase fw-bold py-2 px-3 shadow-sm fs-6" id="total-llamados-badge">
+                    <i class="fa-solid fa-users me-2"></i> PACIENTES EN VENTANILLA
+                </span>
             </div>
-
-            <!-- Tarjeta 2: Video Institucional Savia Salud -->
-            <div class="savia-card p-3 flex-grow-1 d-flex flex-column">
-                <div class="d-flex align-items-center justify-content-between mb-2">
-                    <div class="fw-bold text-white small d-flex align-items-center gap-2">
-                        <i class="fa-solid fa-circle-play text-accent"></i>
-                        <span>Información y Promoción en Salud</span>
-                    </div>
-                    <button type="button" class="btn btn-sm btn-link text-white-50 p-0 text-decoration-none" onclick="configurarVideo()" title="Cambiar enlace de video" style="font-size: 0.75rem;">
-                        <i class="fa-solid fa-gear"></i>
-                    </button>
-                </div>
-
-                <!-- Video Frame -->
-                <div class="video-container shadow">
-                    <iframe id="iframeVideoInstitucional" 
-                            src="https://www.youtube.com/embed/videoseries?list=PL_Xv_X_default&autoplay=1&mute=1&loop=1&controls=0&modestbranding=1" 
-                            title="Video Institucional" 
-                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
-                            allowfullscreen>
-                    </iframe>
-                </div>
-                <div class="text-white-50 text-center mt-2" style="font-size: 0.75rem;">
-                    <i class="fa-solid fa-shield-heart text-accent me-1"></i> EPS Savia Salud • Cuidamos tu bienestar
-                </div>
+            <div class="d-flex align-items-center gap-2 flex-wrap" id="audio-controls-container">
+                <button class="btn btn-sm btn-warning text-dark fw-bold px-3 py-2 shadow-sm rounded-3" id="btn-audio" onclick="habilitarAudio()">
+                    <i class="fa-solid fa-volume-high me-1"></i> Activar Voz de Llamados
+                </button>
+                <button class="btn btn-sm btn-outline-light fw-bold px-3 py-2 shadow-sm rounded-3" id="btn-rellamar" onclick="reLlamarActual()" style="display: none;">
+                    <i class="fa-solid fa-rotate me-1"></i> Re-llamar
+                </button>
+                <span class="small text-white-50 d-none d-md-inline" id="audio-status-msg" style="font-size: 0.8rem;">
+                    (Haga clic para habilitar voz)
+                </span>
             </div>
-
         </div>
 
-        <!-- Columna Derecha: Listado de Pacientes Listos para Reclamar -->
-        <div class="col-lg-7 col-xl-7">
-            <div class="savia-card p-4 h-100 d-flex flex-column">
-                <div class="d-flex align-items-center justify-content-between border-bottom border-secondary border-opacity-50 pb-3 mb-3">
-                    <div class="d-flex align-items-center gap-2">
-                        <div class="p-2 rounded-3 bg-accent text-white d-flex align-items-center justify-content-center" style="width: 38px; height: 38px;">
-                            <i class="fa-solid fa-boxes-packing fs-5"></i>
-                        </div>
-                        <div>
-                            <h5 class="fw-bold text-white mb-0">ÓRDENES LISTAS PARA ENTREGA</h5>
-                            <span class="text-white-50 small">Pacientes llamados a ventanilla de despacho</span>
-                        </div>
-                    </div>
-                    <span class="badge-savia font-mono fs-6" id="total-listos-badge">
-                        0 En Cola
-                    </span>
-                </div>
+        <!-- Contenedor Dinámico: Grilla de Tarjetas de Turnos -->
+        <div class="row g-3 g-xl-4 justify-content-center" id="contenedor-grilla-turnos">
+            <div class="col-12 text-center py-5">
+                <div class="spinner-border text-accent mb-2" role="status"></div>
+                <div class="text-white-50">Cargando turnos en llamado...</div>
+            </div>
+        </div>
 
-                <div class="table-responsive flex-grow-1">
-                    <table class="table turnos-table table-borderless align-middle mb-0">
-                        <thead>
-                            <tr>
-                                <th style="width: 22%;">Tiquete</th>
-                                <th style="width: 38%;">Paciente</th>
-                                <th class="text-center" style="width: 15%;">Prioridad</th>
-                                <th class="text-center" style="width: 25%;">Ventanilla / Módulo</th>
-                            </tr>
-                        </thead>
-                        <tbody id="tabla-turnero2">
-                            <!-- Inyección dinámica vía AJAX -->
-                            <tr>
-                                <td colspan="4" class="text-center text-white-50 py-5">
-                                    <div class="spinner-border text-accent mb-2" role="status"></div>
-                                    <div>Cargando listado de turnos...</div>
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
+        <!-- Tarjeta Video Institucional (Oculta pero preservada para cuando se requiera) -->
+        <div id="seccion-video-turnero" class="savia-card p-3 d-none flex-column mt-4">
+            <div class="d-flex align-items-center justify-content-between mb-2">
+                <div class="fw-bold text-white small d-flex align-items-center gap-2">
+                    <i class="fa-solid fa-circle-play text-accent"></i>
+                    <span>Información y Promoción en Salud</span>
                 </div>
+                <button type="button" class="btn btn-sm btn-link text-white-50 p-0 text-decoration-none" onclick="configurarVideo()" title="Cambiar enlace de video" style="font-size: 0.75rem;">
+                    <i class="fa-solid fa-gear"></i>
+                </button>
+            </div>
+            <div class="video-container shadow">
+                <iframe id="iframeVideoInstitucional" 
+                        src="https://www.youtube.com/embed/videoseries?list=PL_Xv_X_default&autoplay=1&mute=1&loop=1&controls=0&modestbranding=1" 
+                        title="Video Institucional" 
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                        allowfullscreen>
+                </iframe>
+            </div>
+            <div class="text-white-50 text-center mt-2" style="font-size: 0.75rem;">
+                <i class="fa-solid fa-shield-heart text-accent me-1"></i> EPS Savia Salud • Cuidamos tu bienestar
             </div>
         </div>
 
@@ -431,7 +365,6 @@ function cargarVideoGuardado() {
     const urlGuardada = localStorage.getItem('savia_turnero_video_url') || "https://www.youtube-nocookie.com/embed/live_stream?channel=SaviaSaludEPS&autoplay=1&mute=1&loop=1";
     const iframe = document.getElementById('iframeVideoInstitucional');
     if (iframe) {
-        // Enlace por defecto optimizado para Savia Salud o video embebido
         iframe.src = urlGuardada;
     }
 }
@@ -448,7 +381,6 @@ function guardarUrlVideo() {
     const input = document.getElementById('inputUrlVideo');
     let url = input.value.trim();
     if (url) {
-        // Normalizar URLs estándar de youtube a embed
         if (url.includes('youtube.com/watch?v=')) {
             const vId = url.split('watch?v=')[1].split('&')[0];
             url = `https://www.youtube.com/embed/${vId}?autoplay=1&mute=1&loop=1&playlist=${vId}&controls=0`;
@@ -480,15 +412,21 @@ function habilitarAudio() {
     const btnRellamar = document.getElementById('btn-rellamar');
     const statusMsg = document.getElementById('audio-status-msg');
 
-    btnAudio.className = 'btn btn-sm btn-success fw-bold px-3 py-2 shadow-sm rounded-3';
-    btnAudio.innerHTML = '<i class="fa-solid fa-volume-high me-1"></i> Audio Activado';
-    btnRellamar.style.display = 'inline-block';
-    statusMsg.innerHTML = '<span class="text-accent fw-semibold"><i class="fa-solid fa-circle-check me-1"></i> Audio habilitado. Los llamados sonarán por Nombre del Paciente y Ventanilla.</span>';
+    if (btnAudio) {
+        btnAudio.className = 'btn btn-sm btn-success fw-bold px-3 py-2 shadow-sm rounded-3';
+        btnAudio.innerHTML = '<i class="fa-solid fa-volume-high me-1"></i> Audio Activado';
+    }
+    if (btnRellamar) {
+        btnRellamar.style.display = 'inline-block';
+    }
+    if (statusMsg) {
+        statusMsg.innerHTML = '<span class="text-accent fw-semibold"><i class="fa-solid fa-circle-check me-1"></i> Audio activo</span>';
+    }
 
-    // Llamar por nombre y módulo inmediatamente al paciente que esté en pantalla
     if (currentTicketObj) {
         lastCalledTicketId = currentTicketObj.id;
-        window.turneroSpeech.speak(currentTicketObj.nombre_completo, currentTicketObj.modulo_entrega_asignado || 'Ventanilla');
+        const nombreHablado = (currentTicketObj.nombre_completo || currentTicketObj.nombre_habeas || '').trim();
+        window.turneroSpeech.speak(nombreHablado, currentTicketObj.modulo_entrega_asignado || 'Ventanilla');
     } else {
         window.turneroSpeech.playChime();
     }
@@ -496,9 +434,16 @@ function habilitarAudio() {
 
 function reLlamarActual() {
     if (currentTicketObj) {
-        window.turneroSpeech.speak(currentTicketObj.nombre_completo, currentTicketObj.modulo_entrega_asignado || 'Ventanilla');
+        const nombreHablado = (currentTicketObj.nombre_completo || currentTicketObj.nombre_habeas || '').trim();
+        window.turneroSpeech.speak(nombreHablado, currentTicketObj.modulo_entrega_asignado || 'Ventanilla');
     } else {
         alert('No hay ningún paciente en cola para llamar.');
+    }
+}
+
+function reLlamarTurnoEspecifico(nombre, modulo) {
+    if (window.turneroSpeech) {
+        window.turneroSpeech.speak(nombre, modulo || 'Ventanilla');
     }
 }
 
@@ -514,80 +459,110 @@ function actualizarTurnero2() {
     fetch('api/turnero_data.php?type=2&sede_id=' + encodeURIComponent(activeSedeId))
         .then(res => res.json())
         .then(data => {
-            const tbody = document.getElementById('tabla-turnero2');
-            const totalBadge = document.getElementById('total-listos-badge');
-            let html = '';
+            const container = document.getElementById('contenedor-grilla-turnos');
+            const badgeTotal = document.getElementById('total-llamados-badge');
+            if (!container) return;
 
             if (data.turnos && data.turnos.length > 0) {
                 const total = data.turnos.length;
-                if (totalBadge) totalBadge.innerText = `${total} Llamado${total > 1 ? 's' : ''}`;
-
                 const primerTurno = data.turnos[0];
                 currentTicketObj = primerTurno;
 
-                document.getElementById('ultimo-paciente').innerText = primerTurno.nombre_habeas || primerTurno.nombre_completo;
-                document.getElementById('ultimo-ticket').innerText = primerTurno.ticket_numero;
-                const elModulo = document.getElementById('ultimo-modulo');
-                if (elModulo) {
-                    elModulo.innerText = primerTurno.modulo_entrega_asignado || 'VENTANILLA DE ENTREGA';
+                if (badgeTotal) {
+                    badgeTotal.innerHTML = `<i class="fa-solid fa-users me-2"></i> ${total} PACIENTE${total > 1 ? 'S' : ''} EN VENTANILLA`;
                 }
 
-                // Si hay un turno nuevo que no ha sido llamado aún por nombre
+                // Disparo de sintetizador de voz cuando entra un llamado nuevo
                 if (primerTurno.id !== lastCalledTicketId) {
                     lastCalledTicketId = primerTurno.id;
                     if (audioEnabled) {
-                        window.turneroSpeech.speak(primerTurno.nombre_completo || primerTurno.nombre_habeas, primerTurno.modulo_entrega_asignado || 'Ventanilla');
+                        const nombreHablado = (primerTurno.nombre_completo || primerTurno.nombre_habeas || '').trim();
+                        window.turneroSpeech.speak(nombreHablado, primerTurno.modulo_entrega_asignado || 'Ventanilla');
                     }
                 }
 
+                let html = '';
                 data.turnos.forEach((row, idx) => {
+                    const esUltimo = (idx === 0);
+                    const cardClass = esUltimo ? 'savia-card savia-card-active pulse-active' : 'savia-card';
+                    const badgeTop = esUltimo
+                        ? `<span class="badge bg-danger bg-opacity-90 text-white text-uppercase px-3 py-1 small fw-bold shadow-sm"><i class="fa-solid fa-bell me-1"></i> ÚLTIMO LLAMADO</span>`
+                        : `<span class="badge bg-secondary bg-opacity-60 text-white text-uppercase px-2 py-1 small fw-bold"><i class="fa-solid fa-bullhorn me-1"></i> LLAMADO ACTIVO</span>`;
+
+                    const nombreCompleto = (row.nombre_completo || row.nombre_habeas || '').trim();
+                    const nombreUpper = escapeHtml(nombreCompleto.toUpperCase());
+                    const ticketNum = escapeHtml(row.ticket_numero || '--');
+                    const moduloNombre = escapeHtml((row.modulo_entrega_asignado || 'VENTANILLA').toUpperCase());
+
                     const esPreferencial = (row.prioridad && row.prioridad !== 'NORMAL');
                     const badgePrio = esPreferencial 
-                        ? `<span class="badge-preferencial small shadow-sm"><i class="fa-solid fa-star me-1"></i> Preferencial</span>`
-                        : `<span class="badge bg-secondary bg-opacity-50 text-white small">Normal</span>`;
-
-                    const filaActivaClass = (idx === 0) ? 'style="background-color: rgba(4, 172, 140, 0.22) !important;"' : '';
-                    const nombreClass = (idx === 0) ? 'paciente-nombre-activo' : 'paciente-nombre-td';
+                        ? `<span class="badge-preferencial small shadow-sm px-2 py-1"><i class="fa-solid fa-star me-1"></i> Preferencial</span>`
+                        : '';
 
                     html += `
-                        <tr ${filaActivaClass}>
-                            <td class="fw-bold text-accent font-mono fs-6">
-                                ${idx === 0 ? '<i class="fa-solid fa-caret-right text-warning me-1"></i>' : ''}
-                                ${escapeHtml(row.ticket_numero)}
-                            </td>
-                            <td class="${nombreClass}">
-                                ${escapeHtml(row.nombre_habeas || row.nombre_completo)}
-                            </td>
-                            <td class="text-center">
-                                ${badgePrio}
-                            </td>
-                            <td class="text-center">
-                                <span class="badge bg-warning text-dark px-2 py-1 small fw-bold shadow-sm">
-                                    <i class="fa-solid fa-desktop me-1"></i> ${escapeHtml(row.modulo_entrega_asignado || 'Ventanilla')}
-                                </span>
-                            </td>
-                        </tr>
+                        <div class="col-12">
+                            <div class="${cardClass} p-3 p-xl-3 px-4 shadow-lg mb-2">
+                                <div class="row align-items-center g-3">
+                                    
+                                    <!-- Columna 1: Estado y Tiquete (Izquierda) -->
+                                    <div class="col-12 col-md-3 col-xl-2 text-md-start text-center">
+                                        <div class="d-flex align-items-center justify-content-md-start justify-content-center gap-2 mb-2 flex-wrap">
+                                            ${badgeTop}
+                                            ${badgePrio}
+                                        </div>
+                                        <div class="d-flex align-items-center justify-content-md-start justify-content-center gap-2">
+                                            <span class="text-white-50 small fw-bold d-none d-lg-inline">TK:</span>
+                                            <span class="badge bg-black border border-accent text-accent font-mono py-1 px-3 fw-bold shadow-sm" style="font-size: 1.35rem; letter-spacing: 1px;">
+                                                ${ticketNum}
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    <!-- Columna 2: Nombre Completo del Paciente (Centro Amplio) -->
+                                    <div class="col-12 col-md-6 col-xl-7 text-md-start text-center">
+                                        <div class="text-accent small fw-bold text-uppercase tracking-wider mb-1" style="font-size: 0.8rem;">
+                                            <i class="fa-solid fa-user me-1"></i> PACIENTE CONVOCADO:
+                                        </div>
+                                        <div class="fw-bold text-uppercase tracking-wide" style="font-size: clamp(1.35rem, 2.2vw, 2.1rem); line-height: 1.18; color: #fde047; text-shadow: 0 2px 8px rgba(0,0,0,0.85);">
+                                            ${nombreUpper}
+                                        </div>
+                                    </div>
+
+                                    <!-- Columna 3: Ventanilla / Módulo Asignado (Derecha) -->
+                                    <div class="col-12 col-md-3 col-xl-3 text-center text-md-end">
+                                        <div class="p-2 px-3 rounded-3 border d-inline-flex flex-column align-items-center justify-content-center shadow-sm w-100" style="background: linear-gradient(135deg, rgba(245, 158, 11, 0.28) 0%, rgba(4, 172, 140, 0.35) 100%); border: 2px solid #f59e0b !important; max-width: 320px;">
+                                            <span class="text-warning small fw-bold text-uppercase tracking-wider" style="font-size: 0.76rem;">
+                                                <i class="fa-solid fa-person-walking-arrow-right me-1"></i> DIRÍJASE A:
+                                            </span>
+                                            <div class="fw-bold text-white text-uppercase tracking-wide" style="font-size: clamp(1.3rem, 2vw, 1.85rem); text-shadow: 0 2px 8px rgba(0,0,0,0.85); line-height: 1.1;">
+                                                ${moduloNombre}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                </div>
+                            </div>
+                        </div>
                     `;
                 });
+
+                container.innerHTML = html;
             } else {
                 currentTicketObj = null;
-                if (totalBadge) totalBadge.innerText = '0 En Cola';
-                document.getElementById('ultimo-paciente').innerText = '--';
-                document.getElementById('ultimo-ticket').innerText = '--';
-                const elModulo = document.getElementById('ultimo-modulo');
-                if (elModulo) elModulo.innerText = '--';
+                if (badgeTotal) {
+                    badgeTotal.innerHTML = `<i class="fa-solid fa-users me-2"></i> 0 PACIENTES EN VENTANILLA`;
+                }
 
-                html = `
-                    <tr>
-                        <td colspan="4" class="text-center text-white-50 py-5">
-                            <i class="fa-solid fa-clipboard-check fa-3x mb-3 text-accent opacity-50"></i>
-                            <h6 class="text-white">No hay órdenes en atención en ventanilla en este momento</h6>
-                            <small class="text-white-50">Los pacientes llamados a entrega aparecerán aquí automáticamente.</small>
-                        </td>
-                    </tr>`;
+                container.innerHTML = `
+                    <div class="col-12 text-center py-5">
+                        <div class="savia-card p-5 d-inline-block shadow-lg text-center" style="max-width: 650px;">
+                            <i class="fa-solid fa-clipboard-check fa-4x mb-3 text-accent opacity-50"></i>
+                            <h4 class="text-white fw-bold mb-2">SALA DE ESPERA • ENTREGA DE MEDICAMENTOS</h4>
+                            <p class="text-white-50 mb-0 fs-5">Esperando próximo llamado a ventanilla...</p>
+                        </div>
+                    </div>
+                `;
             }
-
-            tbody.innerHTML = html;
         })
         .catch(err => {
             console.error("Error al actualizar turnero 2:", err);
